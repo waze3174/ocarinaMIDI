@@ -24,7 +24,7 @@ imports sloperinaGZ has used on this game, so known to be exported by main or sd
 In the emulator's log, at boot:
 
 ```
-ocarinaMIDI: loaded 0.1.0 (...); controller hooks go in at the game's first controller setup
+ocarinaMIDI: loaded 0.1.1 (...); controller hooks go in at the game's first controller setup
 ocarinaMIDI: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...
 ...
 ocarinaMIDI: counting frames from reads of controller style 0, NpadIdType 0x0
