@@ -1,5 +1,5 @@
 /* The song files tools/midi2oca.py writes (docs/FORMAT.md): a header, then the controller input
- * to give the game, as events sorted by frame. Little endian. */
+ * to give the game, as events sorted by time. Little endian. */
 #ifndef SONG_H
 #define SONG_H
 
@@ -12,14 +12,14 @@
 typedef struct {
   uint32_t magic;
   uint16_t version;
-  uint16_t fps;          /* the frame rate the converter assumed */
+  uint16_t ticks_per_second; /* the events' time unit */
   uint32_t event_count;
-  uint32_t total_frames; /* playback stops after this many frames */
+  uint32_t total_ticks;      /* the song's length */
   char     title[SONG_TITLE_LEN];
 } song_header_t;
 
 typedef struct {
-  uint32_t frame;   /* from this frame of playback on (0 = the first) */
+  uint32_t tick;    /* from this time on (0 = when playback starts) */
   uint32_t buttons; /* nn::hid::NpadButton bits */
   int16_t  lx, ly, rx, ry;
 } song_event_t;

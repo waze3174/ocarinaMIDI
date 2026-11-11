@@ -116,11 +116,13 @@ static const char *song_problem(const song_header_t *header, int64_t size)
     return "not a song file";
   if (header->version != SONG_VERSION)
     return "made by a different converter version";
+  if (!header->ticks_per_second)
+    return "no tick rate";
   if (header->event_count > (uint64_t)(size - (int64_t)sizeof(song_header_t)) / sizeof(song_event_t))
     return "cut short";
   const song_event_t *events = (const song_event_t *)(header + 1);
   for (uint32_t i = 1; i < header->event_count; i++)
-    if (events[i].frame < events[i - 1].frame)
+    if (events[i].tick < events[i - 1].tick)
       return "events out of order";
   return 0;
 }
