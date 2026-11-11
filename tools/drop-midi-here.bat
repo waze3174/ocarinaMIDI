@@ -1,7 +1,7 @@
 @echo off
 rem Drag one or more .mid files onto this file to convert them into ocarinaMIDI songs and add them
 rem to the emulator's playlist. The first time, it asks for the emulator's SD card folder
-rem (for Ryuchii: the "user\sdmc" folder next to ryuchii.exe) and remembers it in sd-path.txt.
+rem (usually the "user\sdmc" folder next to the emulator's exe) and remembers it in sd-path.txt.
 setlocal
 set "HERE=%~dp0"
 set "CONVERTER=%HERE%midi2oca.py"
@@ -25,7 +25,7 @@ set "SD="
 if exist "%HERE%sd-path.txt" set /p SD=<"%HERE%sd-path.txt"
 if not defined SD (
     echo Where is the emulator's SD card folder?
-    echo For Ryuchii it is the "user\sdmc" folder next to ryuchii.exe.
+    echo It is usually the "user\sdmc" folder next to the emulator's exe.
     set /p "SD=Paste the folder path and press Enter: "
 )
 if not defined SD (

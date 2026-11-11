@@ -2,7 +2,7 @@
 # Adapted from sloperinaGZ's Makefile (GPL-3).
 #
 #   make            build bin/subsdk8
-#   make dist       stage install trees in dist/ (ryuchii/, atmosphere/)
+#   make dist       stage install trees in dist/ (emulator/, atmosphere/)
 #   make test       the converter's tests (Python 3)
 #   make clean
 #
@@ -60,14 +60,14 @@ $(OBJDIR) $(BINDIR):
 	mkdir -p $@
 
 # Install trees:
-#   ryuchii/load/<program id>/ocarinaMIDI/exefs/subsdk8   (Ryuchii / Lichii / Eden: <user>/load/...)
+#   emulator/load/<program id>/ocarinaMIDI/exefs/subsdk8  (Lichii / Eden: <user>/load/...)
 #   atmosphere/contents/<program id>/exefs/subsdk8
 #   sd/ocarinaMIDI/songs/                                  (the SD card: songs from tools/midi2oca.py)
 dist: all
 	rm -rf $(DISTDIR)
-	mkdir -p $(DISTDIR)/ryuchii/load/$(PROGRAM_ID)/$(NAME)/exefs $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs \
+	mkdir -p $(DISTDIR)/emulator/load/$(PROGRAM_ID)/$(NAME)/exefs $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs \
 	         $(DISTDIR)/sd/$(NAME)/songs
-	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/ryuchii/load/$(PROGRAM_ID)/$(NAME)/exefs/
+	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/emulator/load/$(PROGRAM_ID)/$(NAME)/exefs/
 	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs/
 
 release: dist

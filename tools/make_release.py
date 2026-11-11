@@ -11,7 +11,7 @@ PROGRAM_ID = "0400486024DEC000"
 
 INSTALL = """ocarinaMIDI {version}: plays MIDI songs on the ocarina in The Legend of Zelda: Ocarina of Time (Switch 2).
 
-Emulator (Ryuchii, Lichii, Eden)
+Emulator (Lichii, Eden)
   Copy the "emulator user folder" folder's contents into the emulator's user folder:
   the "user" folder next to the emulator's exe (portable) or its folder in %APPDATA%.
   That puts the module at user\\load\\{program_id}\\ocarinaMIDI\\exefs\\subsdk8.
@@ -22,7 +22,7 @@ Console (Atmosphere)
 
 Songs
   Install Python 3. Drag .mid files onto converter\\drop-midi-here.bat: the first time, it asks for the
-  emulator's SD card folder (for Ryuchii, user\\sdmc). Or run converter\\midi2oca.py (--help for options).
+  emulator's SD card folder (usually user\\sdmc next to its exe). Or run converter\\midi2oca.py (--help for options).
 
 Playing
   Take out the ocarina, then hold R3 (right stick in) and press:

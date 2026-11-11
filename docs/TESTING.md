@@ -1,10 +1,10 @@
 # Live test plan
 
-0.1.1 passed t1 to t8 in Ryuchii next to the bundled sloperinaGZ 0.0.4.1 (2026-11-10), and t8 set off
+0.1.1 passed t1 to t8 in an emulator next to the bundled sloperinaGZ 0.0.4.1 (2026-11-10), and t8 set off
 Saria's Song. The stop lines measured 24.6 to 39 frames a second against songs made for 30, which is
-why 0.2.0 times songs by the clock. 0.2.0 hasn't run in the game yet: steps marked **new** cover what
-changed (the song list, clock timing, avoiding the game's songs, missing playlist files); the others
-check nothing regressed.
+why 0.2.0 times songs by the clock. In 0.2.0 the clock timing and the song list are confirmed in game;
+avoiding the game's songs hasn't been tried yet. Steps marked **new** cover what changed (the song list,
+clock timing, avoiding the game's songs, missing playlist files); the others check nothing regressed.
 
 ## Setup
 
