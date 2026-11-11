@@ -4,9 +4,10 @@ Plays MIDI songs on the ocarina in **The Legend of Zelda: Ocarina of Time (Switc
 module presses the ocarina's own buttons for you, so the game plays the notes with its own sound,
 animation and pitch bend. Songs are converted on the PC first (`tools/midi2oca.py`).
 
-It runs next to [sloperinaGZ](https://github.com/PracticeROM/sloperina) or on its own. Status: 0.1.1 played
-every live-test song in Ryuchii next to sloperinaGZ; 0.2.0 (clock timing, the on-screen song list, avoiding
-the game's songs) is waiting for its live test. See [docs/TESTING.md](docs/TESTING.md).
+It runs next to [sloperinaGZ](https://github.com/PracticeROM/sloperina) or on its own. Status: tested in
+Ryuchii on game version 1.1.1, next to sloperinaGZ. Songs keep their tempo (a 59 s stretch played in exactly
+59 s), and the song list shows when switching songs. Avoiding the game's own songs follows the game's code
+but hasn't been tried in game yet; 1.0.0 and real consoles are untested. See [docs/TESTING.md](docs/TESTING.md).
 
 ## What you need
 
