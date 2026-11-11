@@ -5,22 +5,22 @@ module presses the ocarina's own buttons for you, so the game plays the notes wi
 animation and pitch bend. Songs are converted on the PC first (`tools/midi2oca.py`).
 
 It runs next to [sloperinaGZ](https://github.com/PracticeROM/sloperina) or on its own. Status: 0.1.1 played
-every live-test song in Ryuchii next to sloperinaGZ; 0.2.0 (clock timing, the on-screen song list, avoiding
+every live-test song in lichii next to sloperinaGZ; 0.2.0 (clock timing, the on-screen song list, avoiding
 the game's songs) is waiting for its live test. See [docs/TESTING.md](docs/TESTING.md).
 
 ## What you need
 
 - The game, version 1.0.0 or 1.1.1 (the module uses no game offsets, so later versions should work too).
-- An emulator with exefs mods (Ryuchii, Lichii, Eden), or a console with LayeredFS.
+- An emulator with exefs mods (lichii, Lichii, Eden), or a console with LayeredFS.
 - Python 3 to convert songs.
 
-## Install (Ryuchii)
+## Install (lichii)
 
-The emulator's user folder is `user\` next to `ryuchii.exe` (portable) or `%APPDATA%\ryuchii`.
+The emulator's user folder is `user\` next to `lichii.exe` (portable) or `%APPDATA%\lichii`.
 
 1. Copy `subsdk8` to `user\load\0400486024DEC000\ocarinaMIDI\exefs\subsdk8`.
    sloperinaGZ stays where it is (`...\sloperinaGZ\exefs\subsdk9` plus its `.ips`): the two use
-   different slots and Ryuchii loads both.
+   different slots and lichii loads both.
 2. Convert a song onto the emulator's SD card: drag `.mid` files onto `tools\drop-midi-here.bat`, or
 
    ```
@@ -46,7 +46,7 @@ file is gone are left out.
 
 While a song plays, the game only sees the song's input; your controller is back when it ends or you stop
 it. While R3 is held the game doesn't see the D-pad. The module also logs what it does in the emulator's
-log, on lines starting `ocarinaMIDI:` (Ryuchii logs them under `Debug.Emulated`, at the default level).
+log, on lines starting `ocarinaMIDI:` (Lichii logs them under `Debug.Emulated`, at the default level).
 
 ## Converting songs
 
