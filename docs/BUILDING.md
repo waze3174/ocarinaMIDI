@@ -13,7 +13,7 @@ make test       # the converter's tests
 On Windows without the MSYS2 shell open:
 
 ```
-C:\devkitPro\msys2\usr\bin\bash.exe -lc "cd /c/dev/ocarina-midi && make"
+C:\devkitPro\msys2\usr\bin\bash.exe -lc "cd /c/path/to/ocarinaMIDI && make"
 ```
 
 The link step fails if the module needs a symbol that's neither defined nor in `lib/imports.txt` (the

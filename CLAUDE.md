@@ -6,8 +6,8 @@ songs as ocarina input, and the PC converter. See README.md, docs/DESIGN.md (how
 
 ## Commands
 
-- Build: `C:\devkitPro\msys2\usr\bin\bash.exe -lc "cd /c/dev/ocarina-midi && make"` (`make dist` for the
-  install folders). Never while the emulator (ryuchii.exe, lichii.exe) runs on the owner's PC.
+- Build: `make` from devkitPro's MSYS2 shell (`make dist` for the install folders); see docs/BUILDING.md.
+  Don't build while the emulator is running on the machine you test on.
 - Tests: `make test`, or `python -I -m unittest discover -s tests -t .` from the repo root.
 
 ## Rules
@@ -20,4 +20,3 @@ songs as ocarina input, and the PC converter. See README.md, docs/DESIGN.md (how
 - The song list draws by copying CPU-rasterised pixels into the presented texture; never read the
   picture back (it would wait on the game's rendering) and never present twice.
 - GPL-3. Code adapted from sloperinaGZ keeps its notice; credit it and gz in the README.
-- No remote, no push.
