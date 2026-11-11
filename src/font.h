@@ -1,6 +1,6 @@
 /* 8x8 bitmap font for the song list (font.c). */
-#ifndef FONT_H
-#define FONT_H
+#ifndef OCARINAMIDI_FONT_H
+#define OCARINAMIDI_FONT_H
 
 #include <stdint.h>
 

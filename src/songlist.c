@@ -70,7 +70,15 @@ static void heading_row(char *row, int selected, int count)
   } else {
     snprintf(state, sizeof(state), "stopped");
   }
-  snprintf(row, OVERLAY_COLS + 1, "%-*s%s", OVERLAY_COLS - (int)strlen(state), where, state);
+  /* where on the left, state on the right; where is cut if the two don't fit */
+  int state_len = (int)strlen(state), where_len = (int)strlen(where);
+  int state_at = OVERLAY_COLS - state_len;
+  if (where_len > state_at)
+    where_len = state_at;
+  memset(row, ' ', OVERLAY_COLS);
+  memcpy(row, where, (size_t)where_len);
+  memcpy(row + state_at, state, (size_t)state_len);
+  row[OVERLAY_COLS] = 0;
 }
 
 static void fill(overlay_panel_t *panel, int selected)
