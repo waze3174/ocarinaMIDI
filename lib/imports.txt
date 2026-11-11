@@ -23,6 +23,7 @@ atan2f
 cosf
 free
 hypotf
+memcmp
 memcpy
 memmove
 memset

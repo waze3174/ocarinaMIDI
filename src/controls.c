@@ -10,7 +10,7 @@ control_t controls_frame(uint32_t held)
 {
   uint32_t pressed = held & ~held_last_frame;
   held_last_frame = held;
-  if (!(held & CONTROL_MODIFIER))
+  if (!controls_menu_open(held))
     return CONTROL_NONE;
   if (pressed & BTN_DRIGHT)
     return CONTROL_NEXT;
@@ -23,7 +23,12 @@ control_t controls_frame(uint32_t held)
   return CONTROL_NONE;
 }
 
+bool controls_menu_open(uint32_t held)
+{
+  return held & CONTROL_MODIFIER;
+}
+
 uint32_t controls_hidden(uint32_t buttons)
 {
-  return buttons & CONTROL_MODIFIER ? BTN_DPAD : 0;
+  return controls_menu_open(buttons) ? BTN_DPAD : 0;
 }
