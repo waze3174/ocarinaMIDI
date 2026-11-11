@@ -26,6 +26,7 @@ static void select_song(int step)
     return;
   selected = songs_step(selected, step);
   log_printf("song %d of %d: %s", selected + 1, songs_count(), songs_name(selected));
+  songlist_linger();
 }
 
 static void play_selected(void)
@@ -33,8 +34,10 @@ static void play_selected(void)
   if (player_active())
     player_stop("restarted");
   const song_t *song = songs_count() ? songs_load(selected) : 0;
-  if (song)
+  if (song) {
+    songlist_hide();
     player_start(song);
+  }
 }
 
 static void run(control_t command)
@@ -46,7 +49,6 @@ static void run(control_t command)
     case CONTROL_STOP: player_stop("R3 + D-pad down"); break;
     case CONTROL_NONE: return;
   }
-  songlist_linger();
 }
 
 void app_frame(uint32_t held)
@@ -59,7 +61,7 @@ void app_frame(uint32_t held)
     reload_playlist();
   menu_was_open = menu_open;
   run(controls_frame(held));
-  songlist_frame(menu_open, selected);
+  songlist_frame(selected);
 }
 
 void app_edit_state(npad_state_t *state)

@@ -100,7 +100,8 @@ modes where the game teaches a song. The scarecrow's song can't be predicted, so
 
 ## The song list on screen
 
-While R3 is held, and for 3 s after a command, a panel at the top centre shows the selected song, its
+For 3 s after the selection changes (R3 + D-pad Right / Left), and never while a song plays (playing
+hides it at once), a panel at the top centre shows the selected song, its
 place in the playlist, the songs before and after it (dimmed) and whether a song plays, with its time
 (`songlist.c`). File names are shown without `.oca`, `_` as a space and anything outside ASCII as `?`,
 cut with `...` to fit.

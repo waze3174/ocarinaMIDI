@@ -32,6 +32,6 @@ ocarinaMIDI: counting frames from reads of controller style 0, NpadIdType 0x0
 ```
 
 "calls another module" instead of "calls the sdk" means another add-on (sloperinaGZ) hooked that import
-first and ours wraps it. The first time R3 is held, the song list logs `swapchain: ...`,
+first and ours wraps it. The first time the song list shows, it logs `swapchain: ...`,
 `song list ready (...)` and `song list on screen: ...`; `song list off: <why>` means it gave up, and the
 rest of the module carries on without it.

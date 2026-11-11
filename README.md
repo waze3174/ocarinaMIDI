@@ -39,9 +39,10 @@ Take out the ocarina in the game, then:
 | D-pad Down | stop |
 | D-pad Right / Left | next / previous song |
 
-While R3 is held, and for 3 seconds after each of these, the song list shows at the top of the screen:
+When you switch songs (R3 + D-pad Right / Left), the song list shows at the top of the screen for 3 seconds:
 the selected song, its place in the playlist, the songs before and after it, and whether a song is
-playing, with its time. Songs whose file is gone are left out.
+playing, with its time. It goes as soon as a song starts, so it never covers a performance. Songs whose
+file is gone are left out.
 
 While a song plays, the game only sees the song's input; your controller is back when it ends or you stop
 it. While R3 is held the game doesn't see the D-pad. The module also logs what it does in the emulator's

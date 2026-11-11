@@ -41,19 +41,21 @@ ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 
 ## 2. The song list (new)
 
-With the ocarina out, hold R3:
+With the ocarina out, hold R3. Nothing shows yet: the list only appears when the selection changes.
 
-- A panel at the top centre: `song 1 of 8` and `stopped` on the first line, the selected song in white
+- R3 + D-pad Right: a panel at the top centre: `song 1 of 8` and `stopped` on the first line, the selected song in white
   with `>`, the songs before and after it in grey. The log shows, once, `swapchain: WxH, format F`,
   `song list ready (...)` and `song list on screen: ...`.
 - R3 + D-pad Right / Left steps through the list (and logs "song 2 of 8: ..."). It wraps at both ends.
-  Let go of R3: the list stays 3 s after the last press, then goes.
+  The list stays 3 s after the last switch, then goes, whether R3 is held or not.
+- R3 + D-pad Up right after switching: the list goes at once and the song plays without it. Play
+  and stop alone never show it.
 - The game's picture is unchanged around the panel, there's no flicker, and the frame rate is the same
   with the list shown and hidden (the emulator's fps counter).
 - A long file name ends in `...`; `_` shows as a space.
 - Delete one `.oca` from `sdmc\ocarinaMIDI\songs` (leave its playlist line) and press R3 again: the count
   drops by one, the log says "playlist: ... is missing, skipped", and stepping never lands on it.
-- With each sloperinaGZ (0.0.4.1 and chain-hooks): open its menu, then hold R3. Both panels draw, the
+- With each sloperinaGZ (0.0.4.1 and chain-hooks): open its menu, then switch songs. Both panels draw, the
   game doesn't freeze or flicker, and the log has no "song list off:" line. If ours never shows next to
   0.0.4.1, check the log for the order of the two modules' "loaded" lines (DESIGN.md, Next to
   sloperinaGZ).

@@ -10,7 +10,7 @@ typedef enum { CONTROL_NONE, CONTROL_NEXT, CONTROL_PREVIOUS, CONTROL_PLAY, CONTR
 
 /* The command pressed this frame, from every button held on any controller during it. */
 control_t controls_frame(uint32_t held);
-/* True while R3 is held: the controls are in use, and the song list is on screen. */
+/* True while R3 is held: the controls are in use. */
 bool controls_menu_open(uint32_t held);
 /* Buttons to hide from the game in a state with these buttons (the D-pad while R3 is held). */
 uint32_t controls_hidden(uint32_t buttons);

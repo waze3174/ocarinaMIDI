@@ -24,6 +24,11 @@ void songlist_linger(void)
   shown_until_ms = sys_ms() + LINGER_MS;
 }
 
+void songlist_hide(void)
+{
+  shown_until_ms = 0;
+}
+
 /* As the font can draw it: '_' (the converter's word separator) as a space, anything else outside
  * ASCII as '?'. */
 static char shown_char(char c)
@@ -100,11 +105,11 @@ static void fill(overlay_panel_t *panel, int selected)
     song_row(panel->text[ROW_NEXT], OTHER_MARKER, songs_step(selected, 1));
 }
 
-void songlist_frame(bool menu_open, int selected)
+void songlist_frame(int selected)
 {
   overlay_panel_t panel;
   memset(&panel, 0, sizeof(panel));
-  panel.shown = menu_open || sys_ms() < shown_until_ms;
+  panel.shown = sys_ms() < shown_until_ms;
   if (panel.shown)
     fill(&panel, selected);
   overlay_publish(&panel);
