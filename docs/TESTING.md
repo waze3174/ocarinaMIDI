@@ -1,12 +1,14 @@
 # Live test plan
 
-Nothing here has run in the game yet. Each step says what to look for and what to change if it's wrong.
-The steps answer the open questions: init order (1), frame counting (3), stick direction and tuning (5),
-sustain (7), rests (8), and whether a melody can set off one of the game's songs (10).
+0.1.1 passed t1 to t8 in Ryuchii next to the bundled sloperinaGZ 0.0.4.1 (2026-11-10), and t8 set off
+Saria's Song. The stop lines measured 24.6 to 39 frames a second against songs made for 30, which is
+why 0.2.0 times songs by the clock. 0.2.0 hasn't run in the game yet: steps marked **new** cover what
+changed (the song list, clock timing, avoiding the game's songs, missing playlist files); the others
+check nothing regressed.
 
 ## Setup
 
-1. **Back up the save.** A song the module plays could be taken as one of the game's songs (step 10).
+1. **Back up the save.** A song the module plays could still be taken as one of the game's songs.
 2. Build (BUILDING.md) and copy `bin/subsdk8` to `user\load\0400486024DEC000\ocarinaMIDI\exefs\subsdk8`.
    Check it's ticked in the game's Properties > Add-ons.
 3. Put the test songs on the emulator's SD card:
@@ -15,18 +17,18 @@ sustain (7), rests (8), and whether a melody can set off one of the game's songs
    python tools\live_test_songs.py --sd "<user folder>\sdmc"
    ```
 
-   That's t1 to t8 in the playlist. Converter options after `--sd` (`--invert-stick`, `--stick-half 20000`,
-   `--fps 25` ...) apply to all eight. The module reads the playlist and the song again at each play, so a
-   new conversion needs no restart.
+   That's t1 to t8 in the playlist. Converter options after `--sd` (`--allow-songs`, `--stick-half 20000`,
+   ...) apply to all eight. The module reads the playlist each time R3 goes down and a song each time it
+   starts, so a new conversion needs no restart.
 4. Keep the emulator's log open: the module's lines start `ocarinaMIDI:`.
 
 ## 1. Loading, with and without sloperinaGZ
 
 Three boots: ocarinaMIDI alone; with sloperinaGZ 0.0.4.1 as released; with sloperinaGZ built from its
-`feature/chain-hooks` branch. Each should log:
+`feature/chain-hooks` branch (aacbf17 or later). Each should log:
 
 ```
-ocarinaMIDI: loaded 0.1.1 (...); controller hooks go in at the game's first controller setup
+ocarinaMIDI: loaded 0.2.0 (...); controller hooks go in at the game's first controller setup
 ocarinaMIDI: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...      (x5, styles 0-4)
 ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 ```
@@ -35,83 +37,89 @@ ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
   "input hook installed".
 - sloperinaGZ still works: its menu opens (R + right stick down) and Link doesn't move while it's open.
 - No `[rtld] Unresolved symbol` line anywhere: that's a hook calling main's PLT (0.1.0's crash, DESIGN.md).
-  With sloperinaGZ from `feature/chain-hooks`, use a build with its lazy-binding fix (see its BUILDING.md).
-- "not started": main has neither `InitializeNpad` nor `GetNpadStyleSet` in its imports (1.1.1 has both).
-- "loaded" but no "hooked from" lines: the game never called either, so the hooks need another trigger.
+- No "no song list on screen:" line after "loaded" (main's `nvnBootstrapLoader` import wasn't found).
 
-## 2. The controls, no song playing
+## 2. The song list (new)
 
-With the ocarina out, and once in normal play:
+With the ocarina out, hold R3:
 
-- R3 alone: note what the game does with it. It mustn't close the ocarina. If it does something in the
-  field that gets in the way, the modifier is `CONTROL_MODIFIER` in `src/controls.c`.
-- R3 + D-pad Up/Down: the ocarina's pitch mustn't change (the D-pad is hidden while R3 is held).
-- R3 + D-pad Right / Left: "song 1 of 8: t1-naturals.oca", then the next and previous.
+- A panel at the top centre: `song 1 of 8` and `stopped` on the first line, the selected song in white
+  with `>`, the songs before and after it in grey. The log shows, once, `swapchain: WxH, format F`,
+  `song list ready (...)` and `song list on screen: ...`.
+- R3 + D-pad Right / Left steps through the list (and logs "song 2 of 8: ..."). It wraps at both ends.
+  Let go of R3: the list stays 3 s after the last press, then goes.
+- The game's picture is unchanged around the panel, there's no flicker, and the frame rate is the same
+  with the list shown and hidden (the emulator's fps counter).
+- A long file name ends in `...`; `_` shows as a space.
+- Delete one `.oca` from `sdmc\ocarinaMIDI\songs` (leave its playlist line) and press R3 again: the count
+  drops by one, the log says "playlist: ... is missing, skipped", and stepping never lands on it.
+- With each sloperinaGZ (0.0.4.1 and chain-hooks): open its menu, then hold R3. Both panels draw, the
+  game doesn't freeze or flicker, and the log has no "song list off:" line. If ours never shows next to
+  0.0.4.1, check the log for the order of the two modules' "loaded" lines (DESIGN.md, Next to
+  sloperinaGZ).
+- "song list off: unsupported swapchain format": the line before it gives the format; `format_bpp` in
+  `src/overlay.c` needs it.
 
-## 3. t1, the five buttons (frame counting)
+## 3. t1, the five buttons, and the stop lines
 
-D4 F4 A4 B4 D5, one second each. Link should play each with the staff showing it. When it ends:
+D4 F4 A4 B4 D5, one second each. When it ends:
 
 ```
-stopped (end of the song) after 213 frames in T s: F frames per second (song made for 30); E controller states edited per frame
+stopped (end of the song) at 7.1xx s of 7.1xx s, after 7.1xx s: N frames, F per second
+timing: events up to L ms late; 0 stalls paused it for 0 ms; E controller states edited per frame
 ```
 
-- **F** is the frame rate as the module counts it. Compare it with the emulator's fps counter. Double or
-  half means the frame counting is off (`MIN_FRAME_MS` or the anchor in `src/poll.c`). If the game holds a
-  steady rate other than 30, convert with `--fps F` for songs at their real tempo.
-- **E** is how many connected controller states the game reads per frame: expected 1, maybe a few. If it
-  wobbles between runs, the game may read from more than one thread.
-- Wrong or missing notes: check the game's ocarina controls (Options); "Performance" needs `--layout performance`.
-  Notes on the wrong buttons throughout would mean the Switch 2 controller state isn't the Switch 1 layout
-  the module assumes.
+- "after" (wall time) matches "of" (the song's length): the tempo is right whatever **F** is.
+- **L** is at most about one frame (33 ms at 30 fps).
+- **E** is how many connected controller states the game reads per frame: expected 1, maybe a few.
 
-## 4. t2, button + D-pad
+## 4. Steady tempo at different frame rates (new)
 
-C#4 D#4 E4 F#4 G#4 A#4 C5 C#5 D#5. Each should match playing it by hand (button + D-pad Up or Down).
+Play t4 (B3 to F5 and back, 0.5 s a note) somewhere the game holds its full rate, then somewhere it runs
+slower (a busy area, or a higher resolution scale in the emulator: anything that changes the fps
+counter). Both stop lines should give "after" within 0.1 s of "of", with different "per second" values.
+By ear, the notes are evenly spaced in both places.
 
-## 5. t3, the stick bends
+## 5. t2 to t7 (passed in 0.1.1)
 
-B3 C4 C#4 D4, then F#4 G4 G#4, then D#5 E5 F5: each group rises by semitones.
+- t2: C#4 D#4 E4 F#4 G#4 A#4 C5 C#5 D#5, each as played by hand with button + D-pad.
+- t3: B3 C4 C#4 D4, then F#4 G4 G#4, then D#5 E5 F5, each group rising by semitones.
+- t4: every semitone, no note missing or merged with the one before.
+- t5: D4 held 2, 5 and 10 s, sounding the whole time.
+- t6: A4 after rests of 2, 5 and 10 s; the ocarina stays out.
+- t7: A4 eight times at 0.25 s, 0.125 s and 1/16 s: 24 presses. Also count them at a lower frame rate:
+  still 24, as each press and each release gets a frame of its own.
 
-- B3, C4, G4, E5, F5 sound like their neighbours without the bend (C#4, F#4, D#5): the game bends with the
-  other stick, so use `--bend-stick right`.
-- Bent the wrong way (B3 above C#4): `--invert-stick`.
-- A step too small or too large (C4 the same as B3 or C#4): `--stick-half` (default 16384, which should be
-  the game's byte 192, its half-tilt step, if it maps the stick without a dead zone). Try 12000 and 20000.
-- Bent notes that start unbent and then slide: the game reads the stick a frame after the press; the
-  converter would then have to tilt a frame early.
+## 6. A dense song (new)
 
-## 6. t4, B3 to F5 and back
+`dragonforce - Through the Fire and Flames.mid` (439 s, 5429 events, 30 of them in its busiest second:
+one per tick) and `rick astley - never gonna give you up.mid` (a lighter one). This is the stress test
+for the one-frame minimum and the released frame before a repeated note.
 
-Every semitone, 0.5 s each, no gaps. Two notes in a row on the same button get one released frame
-between them: check no note is missing or merged with the one before.
+- No note sticks and no repeated note merges (listen in the fastest runs).
+- The timing line's **L** stays small at 30 fps and grows at lower rates, and "after" exceeds "of" by
+  at most about L: the song falls behind in fast runs and catches up after them.
+- A load or a hitch during the song shows as "N stalls paused it for M ms"; the song carries on from
+  where it was.
 
-## 7. t5, sustain
+## 7. t8, one of the game's songs (new)
 
-D4 held 2, 5 and 10 s. Does it sound the whole time? If the game cuts or fades long notes, songs will too.
+Saria's Song (F4 A4 B4 twice), on a save that knows it, somewhere nothing reacts to it.
 
-## 8. t6, rests
+- Converted by default (`live_test_songs.py --sd ...`), the converter prints "Saria's Song at notes 1-6
+  (...): note 6 (B4) is played as Y + DDOWN + left stick half up, the same pitch, ...". In the game, all
+  six notes play, the last B4 sounds like the first, and the game does **not** take it as Saria's Song.
+- Converted again with `--allow-songs`: it prints a warning instead, and the game takes it as Saria's
+  Song, as 0.1.1 did.
+- If the default conversion is still recognised, the game matched in a mode where it ignores the
+  modifier (DESIGN.md, the song matcher): note which situation it was in.
+- If the altered B4 sounds a semitone off, the stick bend and the modifier don't add up the way the
+  code reads (`ALTERNATE_FINGERING` in the converter).
 
-A4, then rests of 2, 5 and 10 s, each followed by A4. Does the ocarina stay out through every rest?
-
-## 9. t7, repeated notes
-
-A4 eight times at 0.25 s, eight at 0.125 s, eight at 1/16 s (one frame pressed, one released, at 30
-fps). Count them: 24 if every press reaches the game. If the fastest merge, the game needs more than one
-released frame (a converter change: the gap in `segments`).
-
-## 10. t8, one of the game's songs
-
-Saria's Song (F4 A4 B4 twice). Play it on a save that knows it, somewhere nothing reacts to it.
-
-- Recognised (the song's jingle, Saria talks): the module's input sets off songs, so a melody that holds a
-  warp song would warp. The converter warns when a melody holds one of the game's songs note for note.
-- If F#4 in place of an F4 still counts, the game matches buttons, not notes, and that check needs widening.
-
-## 11. Stopping and edge cases
+## 8. Stopping and edge cases
 
 - R3 + D-pad Down stops ("stopped (R3 + D-pad down)"); R3 + D-pad Up while playing restarts.
+- R3 + D-pad Right while playing: "a song is playing: stop it first", and the list shows `playing m:ss`.
 - After a song, the controller works as normal.
-- "can't mount the SD card": nn::fs can't be used from the controller hook; mount at module init instead.
 - With sloperinaGZ: its menu doesn't stop a playing song, and while its levitate is floating it hides R3,
-  so the controls don't respond then.
+  so the controls (and the list) don't respond then.
