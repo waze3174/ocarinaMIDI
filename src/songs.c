@@ -52,12 +52,28 @@ static int64_t read_file(const char *path, void *buf, size_t capacity)
   return size;
 }
 
+static void song_path(char *path, size_t size, const char *name)
+{
+  snprintf(path, size, SONGS_DIR "/%s", name);
+}
+
+static bool song_file_exists(const char *name)
+{
+  char path[PATH_LEN];
+  song_path(path, sizeof(path), name);
+  fs_file_t file;
+  if (fs_open(&file, path, FS_READ) != 0)
+    return false;
+  fs_close(file);
+  return true;
+}
+
 static bool is_space(char c)
 {
   return c == ' ' || c == '\t' || c == '\r';
 }
 
-/* One playlist line: blank lines and lines starting with '#' are skipped. */
+/* One playlist line: blank lines, lines starting with '#' and missing files are skipped. */
 static void add_song_name(const char *line, size_t len)
 {
   while (len && is_space(*line)) {
@@ -72,20 +88,25 @@ static void add_song_name(const char *line, size_t len)
     log_printf("playlist: skipped a line (names up to %d characters, up to %d songs)", MAX_NAME_LEN - 1, MAX_SONGS);
     return;
   }
-  memcpy(song_names[song_count], line, len);
-  song_names[song_count][len] = 0;
+  char *name = song_names[song_count];
+  memcpy(name, line, len);
+  name[len] = 0;
+  if (!song_file_exists(name)) {
+    log_printf("playlist: %s is missing, skipped", name);
+    return;
+  }
   song_count++;
 }
 
 bool songs_reload(void)
 {
+  song_count = 0;
   if (!mount_sd())
     return false;
   int64_t size = read_file(PLAYLIST_FILE, playlist_text, PLAYLIST_BYTES);
   if (size < 0)
     return false;
   playlist_text[size] = 0;
-  song_count = 0;
   const char *line = playlist_text;
   for (const char *p = playlist_text;; p++) {
     if (*p == '\n' || !*p) {
@@ -96,13 +117,18 @@ bool songs_reload(void)
       break;
   }
   if (!song_count)
-    log_printf("%s lists no songs", PLAYLIST_FILE);
+    log_printf("%s lists no song that is on the SD card", PLAYLIST_FILE);
   return song_count > 0;
 }
 
 int songs_count(void)
 {
   return song_count;
+}
+
+int songs_step(int index, int step)
+{
+  return song_count ? ((index + step) % song_count + song_count) % song_count : 0;
 }
 
 const char *songs_name(int index)
@@ -132,7 +158,7 @@ const song_t *songs_load(int index)
   if (index < 0 || index >= song_count)
     return 0;
   char path[PATH_LEN];
-  snprintf(path, sizeof(path), SONGS_DIR "/%s", song_names[index]);
+  song_path(path, sizeof(path), song_names[index]);
   int64_t size = read_file(path, song_bytes, SONG_BYTES);
   if (size < 0)
     return 0;
