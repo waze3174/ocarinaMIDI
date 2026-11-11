@@ -25,6 +25,14 @@ the converter assumes they map one to one to the controller's buttons.
   `nn::hid::InitializeNpad` and `nn::hid::GetNpadStyleSet`. The game calls them from its own code,
   after rtld has run every module's DT_INIT. The first call to either points main's five
   `nn::hid::GetNpadStates` GOT slots at our wrappers, each saving what the slot held then and calling it.
+- **Lazy binding.** main has no `BIND_NOW`, so rtld binds its imports (JUMP_SLOTs) at their first call:
+  until then a slot holds main's PLT0, which passes rtld's resolver the slot address that the import's
+  own PLT stub left in x16. Called from anywhere else, the resolver reads a garbage relocation and
+  returns 0 (0.1.0 crashed this way: its GetNpadStyleSet hook tail-called PLT0 with x16 = PLT0). When
+  x16 happens to still hold the slot, rtld binds it and writes the function over the hook. So a hook
+  never calls a slot value that points into main. It calls the function itself, which this module
+  imports from sdk (rtld binds this module's imports at load). Only code in another module, the sdk's
+  function or another add-on's wrapper, is chained to (`got_hook`).
 - **Next to sloperinaGZ.** sloperinaGZ (subsdk9) hooks the same five slots and `nvnBootstrapLoader` at
   its own DT_INIT. Since ours go in after every DT_INIT, they wrap whatever is there:
   game -> ocarinaMIDI -> sloperinaGZ -> sdk. That holds whichever DT_INIT runs first, and whether

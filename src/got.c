@@ -74,14 +74,19 @@ uintptr_t *got_slot(uintptr_t module, const char *name)
   return 0;
 }
 
-const char *got_hook(uintptr_t module, const char *name, void *replacement, void **previous)
+const char *got_hook(uintptr_t module, const char *name, void *replacement, void *function, void **next)
 {
   uintptr_t *slot = got_slot(module, name);
   if (!slot)
     return "import not found";
   if (!sys_mapped((uintptr_t)slot, 8, SYS_PERM_R | SYS_PERM_W))
     return "GOT is read-only";
-  *previous = (void *)__atomic_load_n(slot, __ATOMIC_ACQUIRE);
+  uintptr_t old = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+  bool bound = sys_mapped(old, 4, SYS_PERM_X) && sys_region_start(old) != sys_region_start(module);
+  void *target = bound ? (void *)old : function;
+  if (!target)
+    return "the import isn't bound yet, and this module has no definition of it to call";
+  *next = target;
   __atomic_store_n(slot, (uintptr_t)replacement, __ATOMIC_RELEASE);
   return 0;
 }

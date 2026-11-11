@@ -17,6 +17,7 @@ size_t strlen(const char *s);
 
 #define SYS_PERM_R 1u
 #define SYS_PERM_W 2u
+#define SYS_PERM_X 4u
 
 /* True if [addr, addr + size) lies in one mapped region with at least `perm`. */
 bool sys_mapped(uintptr_t addr, size_t size, uint32_t perm);

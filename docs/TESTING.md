@@ -26,7 +26,7 @@ Three boots: ocarinaMIDI alone; with sloperinaGZ 0.0.4.1 as released; with slope
 `feature/chain-hooks` branch. Each should log:
 
 ```
-ocarinaMIDI: loaded 0.1.0 (...); controller hooks go in at the game's first controller setup
+ocarinaMIDI: loaded 0.1.1 (...); controller hooks go in at the game's first controller setup
 ocarinaMIDI: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...      (x5, styles 0-4)
 ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 ```
@@ -34,6 +34,8 @@ ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 - Alone: "calls the sdk". With sloperinaGZ: "calls another module" for all five, and sloperinaGZ still logs
   "input hook installed".
 - sloperinaGZ still works: its menu opens (R + right stick down) and Link doesn't move while it's open.
+- No `[rtld] Unresolved symbol` line anywhere: that's a hook calling main's PLT (0.1.0's crash, DESIGN.md).
+  With sloperinaGZ from `feature/chain-hooks`, use a build with its lazy-binding fix (see its BUILDING.md).
 - "not started": main has neither `InitializeNpad` nor `GetNpadStyleSet` in its imports (1.1.1 has both).
 - "loaded" but no "hooked from" lines: the game never called either, so the hooks need another trigger.
 

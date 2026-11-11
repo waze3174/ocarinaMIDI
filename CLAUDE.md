@@ -13,7 +13,9 @@ songs as ocarina input, and the PC converter. See README.md, docs/DESIGN.md (how
 ## Rules
 
 - No game offsets in the module: main's base comes from `nnMain`, its imports by name (`got.c`).
-- Every hook calls what its slot held before (other add-ons, e.g. sloperinaGZ, hook the same slots).
+- Every hook calls what its slot held before (other add-ons, e.g. sloperinaGZ, hook the same slots),
+  unless the slot still points into main: main binds its imports lazily, and a hook must never call
+  its PLT. The hook then calls the function itself, imported by this module (docs/DESIGN.md).
 - Music logic lives in the converter; the module only replays input.
 - GPL-3. Code adapted from sloperinaGZ keeps its notice; credit it and gz in the README.
 - No remote, no push.
