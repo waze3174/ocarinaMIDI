@@ -30,7 +30,7 @@ class LiveTestSongs(unittest.TestCase):
         for name in live.SONGS:
             with self.subTest(name):
                 expected = ["Saria's Song"] if name == "t8-sarias-song" else []
-                self.assertEqual(m.game_songs_in(played_pitches(name)[0]), expected)
+                self.assertEqual([w.song for w in m.game_song_windows(played_pitches(name)[0])], expected)
 
     def test_sd_card_gets_every_song_in_the_playlist(self):
         with tempfile.TemporaryDirectory() as folder, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):

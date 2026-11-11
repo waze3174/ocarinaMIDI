@@ -1,5 +1,5 @@
 """The songs for the live test (docs/TESTING.md): writes them as MIDI files, or converts them straight onto the
-emulator's SD card. Options it doesn't know (--stick-half, --invert-stick, --fps, ...) go to midi2oca."""
+emulator's SD card. Options it doesn't know (--stick-half, --invert-stick, --allow-songs, ...) go to midi2oca."""
 import argparse
 import sys
 import tempfile
@@ -18,7 +18,8 @@ def sequence(pitches, length, gap=0.0, start=0.0):
     return [(start + i * (length + gap), length, pitch) for i, pitch in enumerate(pitches)]
 
 
-# name: (title, notes in seconds). None of them holds one of the game's songs, except t8 on purpose.
+# name: (title, notes in seconds). None of them holds one of the game's songs, except t8 on purpose (converted with
+# an alternate fingering on one note unless --allow-songs is given).
 SONGS = {
     "t1-naturals": ("t1 the five buttons", sequence([D4, F4, A4, B4, D5], 1, 0.5)),
     "t2-modifiers": ("t2 button + D-pad", sequence([Cs4, Ds4, E4, Fs4, Gs4, As4, C5, Cs5, Ds5], 1, 0.5)),

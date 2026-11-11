@@ -7,7 +7,9 @@
 One note at a time: the highest of notes that start together, and a lower note only takes over when the
 one sounding is about to end (legato). Channel 10 (drums) is dropped. The song is moved into the ocarina's
 range (B3-F5) by one transposition for the whole song, then any notes still outside are moved by octaves.
-Each note becomes the ocarina's buttons (docs/FORMAT.md), one step per game frame.
+Each note becomes the ocarina's buttons (docs/FORMAT.md), timed in ticks (30 a second by default).
+Where the melody holds one of the game's own songs note for note, one of its notes is played with an alternate
+fingering (same pitch), so the game doesn't take it as that song; --allow-songs keeps them as the game's songs.
 """
 import argparse
 import re
@@ -57,6 +59,9 @@ GAME_SONGS = {
     "Nocturne of Shadow": (71, 69, 69, 62, 71, 69, 65),
     "Prelude of Light": (74, 69, 74, 69, 71, 74),
 }
+# The game only takes a song from plain presses of the five buttons (docs/DESIGN.md), so a natural note played as
+# its button + the lowering modifier + a one-semitone bend up sounds the same but breaks the match.
+ALTERNATE_FINGERING = (-1, 1)  # (modifier step, stick step)
 
 # --- the song file (src/song.h) --------------------------------------------------------------------------
 SONG_MAGIC = b"OCA1"
@@ -67,11 +72,12 @@ EVENT = struct.Struct("<IIhhhh")
 SONGS_SUBDIR = Path("ocarinaMIDI") / "songs"
 PLAYLIST = "playlist.txt"
 MAX_FILE_NAME = 63  # the module's limit for a playlist entry
+MAX_TICK_RATE = 0xFFFF  # a u16 in the header
 
 DRUM_CHANNEL = 10
 CHORD_WINDOW_S = 0.03  # notes starting this close together are one chord
 LEGATO_S = 0.1  # a lower note may take over when the current one ends within this
-LEAD_IN_FRAMES = 2  # idle frames before the first note, so the game sees every button released first
+LEAD_IN_TICKS = 2  # idle ticks before the first note, so the game sees every button released first
 DEFAULT_TEMPO = 500000  # microseconds per quarter note, until a tempo event says otherwise
 TRANSPOSE_SEARCH = range(-48, 49)
 
@@ -270,11 +276,28 @@ def fit_range(notes, transpose=None):
     return [replace(n, pitch=fold_into_range(n.pitch + shift)) for n in notes], shift, folded
 
 
-def game_songs_in(pitches):
-    """The game's songs these pitches play back to back, in order of GAME_SONGS."""
+@dataclass(frozen=True)
+class SongWindow:
+    song: str
+    first: int  # note indices, inclusive
+    last: int
+
+
+def game_song_windows(pitches):
+    """Each place where these pitches play one of the game's songs, note for note."""
     pitches = tuple(pitches)
-    return [name for name, song in GAME_SONGS.items()
-            if any(pitches[i:i + len(song)] == song for i in range(len(pitches) - len(song) + 1))]
+    return [SongWindow(name, i, i + len(song) - 1) for name, song in GAME_SONGS.items()
+            for i in range(len(pitches) - len(song) + 1) if pitches[i:i + len(song)] == song]
+
+
+def notes_to_alter(windows):
+    """The fewest notes that put one in every window: going by where the windows end, the last note of each
+    window that doesn't hold one yet."""
+    altered = []
+    for window in sorted(windows, key=lambda w: w.last):
+        if not altered or altered[-1] < window.first:
+            altered.append(window.last)
+    return altered
 
 
 # --- from notes to controller input -------------------------------------------------------------------------
@@ -303,9 +326,14 @@ def stick_tilt(bend, stick):
     return stick.sign * magnitude * (-1 if bend < 0 else 1)
 
 
-def note_input(pitch, layout, stick):
-    """The buttons and stick for one semitone; also its natural note's button, to spot re-presses."""
+def note_input(pitch, layout, stick, alternate=False):
+    """The buttons and stick for one semitone (alternate: a natural note's alternate fingering); also its natural
+    note's button, to spot re-presses."""
     natural, modifier, bend = NOTE_PLAN[pitch]
+    if alternate:
+        if (modifier, bend) != (0, 0):
+            raise ValueError(f"note {pitch} isn't a natural note: it has no alternate fingering")
+        modifier, bend = ALTERNATE_FINGERING
     names = LAYOUTS[layout]
     button = BTN[names["notes"][natural]]
     buttons = button | (BTN[names["up" if modifier > 0 else "down"]] if modifier else 0)
@@ -314,24 +342,30 @@ def note_input(pitch, layout, stick):
     return Input(buttons, **sticks), button
 
 
+def fingerings(notes, layout, stick, altered=()):
+    """Each note's (Input, natural button); the notes at the indices in `altered` with the alternate fingering."""
+    altered = set(altered)
+    return [note_input(note.pitch, layout, stick, i in altered) for i, note in enumerate(notes)]
+
+
 @dataclass
 class Segment:
-    start: int  # frames
+    start: int  # ticks
     end: int
     input: Input
     button: int  # the natural note's button
 
 
-def segments(notes, fps, layout, stick, min_hold):
-    """Frame spans: rounded, never overlapping, at least min_hold long, and with one released frame
-    between two notes on the same button (so the game sees it pressed again)."""
+def segments(notes, fingered, tick_rate, min_hold):
+    """Tick spans for the notes, played as `fingered` (from fingerings): rounded, never overlapping, at least
+    min_hold long, and with one released tick between two notes on the same button (so the game sees it
+    pressed again)."""
     spans = []
     offset = None
-    for note in notes:
-        start, end = round(note.start * fps), round(note.end * fps)
+    for note, (played, button) in zip(notes, fingered):
+        start, end = round(note.start * tick_rate), round(note.end * tick_rate)
         if offset is None:
-            offset = start - LEAD_IN_FRAMES
-        played, button = note_input(note.pitch, layout, stick)
+            offset = start - LEAD_IN_TICKS
         spans.append(Segment(start - offset, end - offset, played, button))
     for i, span in enumerate(spans):
         if i:
@@ -349,7 +383,7 @@ def segments(notes, fps, layout, stick, min_hold):
 
 
 def events(spans):
-    """(frame, Input) changes, ending released; and the total frame count."""
+    """(tick, Input) changes, ending released; and the song's length in ticks."""
     changes = []
     for i, span in enumerate(spans):
         changes.append((span.start, span.input))
@@ -366,9 +400,9 @@ def encode_title(title):
     return raw.decode("utf-8", "ignore").encode("utf-8")
 
 
-def song_bytes(title, fps, changes, total_frames):
-    out = [HEADER.pack(SONG_MAGIC, SONG_VERSION, fps, len(changes), total_frames, encode_title(title))]
-    out += [EVENT.pack(frame, i.buttons, i.lx, i.ly, i.rx, i.ry) for frame, i in changes]
+def song_bytes(title, tick_rate, changes, total_ticks):
+    out = [HEADER.pack(SONG_MAGIC, SONG_VERSION, tick_rate, len(changes), total_ticks, encode_title(title))]
+    out += [EVENT.pack(tick, i.buttons, i.lx, i.ly, i.rx, i.ry) for tick, i in changes]
     return b"".join(out)
 
 
@@ -377,15 +411,57 @@ def file_name(stem):
     return name[:MAX_FILE_NAME - len(".oca")] + ".oca"
 
 
+def is_song_line(line):
+    return bool(line.strip()) and not line.strip().startswith("#")
+
+
 def add_to_playlist(songs_dir, name):
+    """Adds the song once, and drops the songs whose file is gone. Returns the names dropped."""
     playlist = songs_dir / PLAYLIST
     lines = playlist.read_text(encoding="utf-8").splitlines() if playlist.exists() else []
+    gone = [line.strip() for line in lines if is_song_line(line) and not (songs_dir / line.strip()).is_file()]
+    lines = [line for line in lines if not is_song_line(line) or line.strip() not in gone]
     if name not in (line.strip() for line in lines):
         lines.append(name)
     playlist.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+    return gone
 
 
 # --- the command line --------------------------------------------------------------------------------------------
+NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def pitch_name(pitch):
+    return f"{NOTE_NAMES[pitch % 12]}{pitch // 12 - 1}"
+
+
+def song_time(seconds):
+    minutes, rest = divmod(seconds, 60)
+    return f"{int(minutes)}:{rest:04.1f}"
+
+
+def alternate_fingering_text(pitch, layout, stick):
+    names = LAYOUTS[layout]
+    modifier, bend = ALTERNATE_FINGERING
+    tilt = "up" if stick_tilt(bend, stick) > 0 else "down"
+    return f"{names['notes'][pitch]} + {names['up' if modifier > 0 else 'down']} + {stick.side} stick half {tilt}"
+
+
+def report_game_songs(windows, altered, notes, layout, stick):
+    """Each place the melody plays one of the game's songs: the note played differently, or a warning."""
+    for window in windows:
+        where = (f"{window.song} at notes {window.first + 1}-{window.last + 1} "
+                 f"(from {song_time(notes[window.first].start - notes[0].start)})")
+        changed = next((i for i in altered if window.first <= i <= window.last), None)
+        if changed is None:
+            print(f"warning: it plays {where}; the game may take it as that song (warp songs move Link)",
+                  file=sys.stderr)
+            continue
+        pitch = notes[changed].pitch
+        print(f"{where}: note {changed + 1} ({pitch_name(pitch)}) is played as "
+              f"{alternate_fingering_text(pitch, layout, stick)}, the same pitch, so the game won't take it as the song")
+
+
 def list_tracks(tracks):
     for index, track in enumerate(tracks):
         channels = sorted({n.channel for n in track.notes})
@@ -403,19 +479,22 @@ def parse_args(argv):
     p.add_argument("--track", type=int, help="only this track (numbers from --list)")
     p.add_argument("--channel", type=int, choices=range(1, 17), metavar="1-16", help="only this channel")
     p.add_argument("--transpose", type=int, help="semitones for the whole song (default: the best fit)")
-    p.add_argument("--fps", type=int, default=30, help="the game's frame rate (default 30)")
-    p.add_argument("--min-hold", type=int, default=1, help="shortest note, in frames (default 1)")
+    p.add_argument("--tick-rate", type=int, default=30, help="the timing's resolution, ticks a second (default 30)")
+    p.add_argument("--min-hold", type=int, default=1, help="shortest note, in ticks (default 1)")
     p.add_argument("--layout", choices=sorted(LAYOUTS), default="game", help="the game's ocarina button layout")
     p.add_argument("--title", help="shown in the log (default: the first track name, or the file name)")
     p.add_argument("--stick-half", type=int, default=Stick.half, help="stick tilt for a one-semitone bend")
     p.add_argument("--stick-full", type=int, default=Stick.full, help="stick tilt for a two-semitone bend")
     p.add_argument("--invert-stick", action="store_true", help="tilt down to raise the pitch")
     p.add_argument("--bend-stick", choices=("left", "right"), default="left", help="the stick that bends the pitch")
+    p.add_argument("--allow-songs", action="store_true",
+                   help="play the game's songs plainly, so the game may take them as its songs (by default one "
+                        "note of each is played with an alternate fingering)")
     args = p.parse_args(argv)
     if not (args.sd or args.out or args.list):
         p.error("give --sd, --out or --list")
-    if args.fps < 1 or args.min_hold < 1:
-        p.error("--fps and --min-hold must be at least 1")
+    if not 1 <= args.tick_rate <= MAX_TICK_RATE or args.min_hold < 1:
+        p.error(f"--tick-rate must be 1 to {MAX_TICK_RATE}, and --min-hold at least 1")
     return args
 
 
@@ -433,22 +512,25 @@ def main(argv=None):
         sys.exit("no notes left: check --track and --channel (see --list)")
     fitted, shift, folded = fit_range(picked, args.transpose)
     stick = Stick(args.stick_half, args.stick_full, -1 if args.invert_stick else 1, args.bend_stick)
-    changes, total = events(segments(fitted, args.fps, args.layout, stick, args.min_hold))
+    windows = game_song_windows(n.pitch for n in fitted)
+    altered = [] if args.allow_songs else notes_to_alter(windows)
+    fingered = fingerings(fitted, args.layout, stick, altered)
+    changes, total = events(segments(fitted, fingered, args.tick_rate, args.min_hold))
     title = args.title or next((t.name for t in tracks if t.name), "") or args.midi.stem
-    data = song_bytes(title, args.fps, changes, total)
+    data = song_bytes(title, args.tick_rate, changes, total)
     if args.sd:
         songs_dir = args.sd / SONGS_SUBDIR
         songs_dir.mkdir(parents=True, exist_ok=True)
         path = songs_dir / file_name(args.midi.stem)
         path.write_bytes(data)
-        add_to_playlist(songs_dir, path.name)
+        for gone in add_to_playlist(songs_dir, path.name):
+            print(f"playlist: dropped {gone}, its file is gone")
     else:
         path = args.out
         path.write_bytes(data)
     print(f"{title}: {len(picked)} notes, transposed {shift:+d}, {folded} folded by octaves, "
-          f"{total} frames ({total / args.fps:.1f} s at {args.fps} fps), {len(changes)} events -> {path}")
-    for song in game_songs_in(n.pitch for n in fitted):
-        print(f"warning: it plays {song}; the game may take it as that song (warp songs move Link)", file=sys.stderr)
+          f"{total / args.tick_rate:.1f} s, {len(changes)} events -> {path}")
+    report_game_songs(windows, altered, fitted, args.layout, stick)
 
 
 if __name__ == "__main__":
