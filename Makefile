@@ -70,10 +70,13 @@ dist: all
 	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/ryuchii/load/$(PROGRAM_ID)/$(NAME)/exefs/
 	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs/
 
+release: dist
+	$(PYTHON) -I tools/make_release.py $(BINDIR)/$(SUBSDK) $(DISTDIR)
+
 test:
 	$(PYTHON) -I -m unittest discover -s tests -t .
 
 clean:
 	rm -rf $(OBJDIR) $(BINDIR) $(DISTDIR)
 
-.PHONY: all dist test clean
+.PHONY: all dist release test clean

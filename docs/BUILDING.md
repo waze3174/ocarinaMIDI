@@ -8,6 +8,7 @@
 make            # bin/subsdk8
 make dist       # dist/ryuchii/load/0400486024DEC000/ocarinaMIDI/exefs/subsdk8, dist/atmosphere/...
 make test       # the converter's tests
+make release    # dist, then dist/ocarinaMIDI-<version>.zip for a GitHub release
 ```
 
 On Windows without the MSYS2 shell open:
