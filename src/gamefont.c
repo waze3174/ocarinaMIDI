@@ -137,6 +137,7 @@ bool gamefont_load(void)
   bool ok = (arena = aligned_alloc(16, ARENA_SIZE)) != 0 && (scratch = aligned_alloc(16, SCRATCH_SIZE)) != 0;
   if (!ok)
     log_printf("game fonts: no memory for the glyphs");
+  size_t loaded_bytes = 0;
   for (int f = 0; ok && f < GF_FACES; f++) {
     size_t size = 0;
     uint8_t *data = gamefile_read_zs(face_files[f], &size);
@@ -148,6 +149,7 @@ bool gamefont_load(void)
       ok = false;
     } else {
       face_data[f] = data;
+      loaded_bytes += size;
     }
   }
   gamefile_release(); /* the zstd dictionary is only needed for loading */
@@ -156,7 +158,8 @@ bool gamefont_load(void)
     return false;
   }
   __atomic_store_n(&ready, true, __ATOMIC_RELEASE);
-  log_printf("game fonts: Clarimo UD PE loaded (%u ms)", (unsigned)(sys_ms() - start));
+  log_printf("game fonts: Clarimo UD PE loaded (%u KiB, %u ms)", (unsigned)(loaded_bytes / 1024),
+             (unsigned)(sys_ms() - start));
   return true;
 }
 

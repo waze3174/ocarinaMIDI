@@ -26,13 +26,16 @@ exported by main or sdk).
 In the emulator's log, at boot:
 
 ```
-ocarinaMIDI: loaded 0.2.0 (...); controller hooks go in at the game's first controller setup
+ocarinaMIDI: loaded 0.3.0 (...); controller hooks go in at the game's first controller setup
 ocarinaMIDI: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...
 ...
 ocarinaMIDI: counting frames from reads of controller style 0, NpadIdType 0x0
 ```
 
 "calls another module" instead of "calls the sdk" means another add-on (sloperinaGZ) hooked that import
-first and ours wraps it. The first time the song list shows, it logs `swapchain: ...`,
-`song list ready (...)` and `song list on screen: ...`; `song list off: <why>` means it gave up, and the
-rest of the module carries on without it.
+first and ours wraps it. The first time songs are switched it logs the game's files being read (`ui
+shader: programs N and M ...`, `game fonts: Clarimo UD PE loaded (N KiB, N ms)`), then `gpu drawing ready (...)`
+when the first frame is drawn. If the game-style drawing can't be used it says why and the plain panel logs
+`swapchain: ...`, `song list ready (...)` and `song list on screen (plain): ...` instead;
+`song list off: <why>` means the list gave up altogether, and the rest of the module carries on without
+it.

@@ -27,7 +27,8 @@ Songs
 Playing
   Take out the ocarina, then hold R3 (right stick in) and press:
     D-pad Up: play    D-pad Down: stop    D-pad Right / Left: next / previous song
-  The song list shows at the top of the screen when you switch songs.
+  The song list shows at the top of the screen when you switch songs, in the game's own menu style
+  (it reads the game's font and shader from your copy of the game).
 
 Works next to sloperinaGZ (they use different module slots). README.md has the details.
 

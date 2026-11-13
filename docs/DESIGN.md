@@ -101,19 +101,52 @@ modes where the game teaches a song. The scarecrow's song can't be predicted, so
 ## The song list on screen
 
 For 3 s after the selection changes (R3 + D-pad Right / Left), and never while a song plays (playing
-hides it at once), a panel at the top centre shows the selected song, its
-place in the playlist, the songs before and after it (dimmed) and whether a song plays, with its time
-(`songlist.c`). File names are shown without `.oca`, `_` as a space and anything outside ASCII as `?`,
-cut with `...` to fit.
+hides it at once), a panel at the top centre shows the selected song, its place in the playlist, the
+songs before and after it and whether a song plays, with its time (`songlist.c`). File names are shown
+without `.oca`, `_` as a space and anything outside ASCII as `?`, cut with `...` to fit. `songlist.c`
+hands over what to show (`overlay_panel_t`: the place, the state, up to three songs, which is
+selected), not rows of text, so each drawing path lays it out its own way. The controller thread hands it
+to the present thread through a sequence lock.
 
-Drawing is sloperinaGZ's, cut down to one opaque panel (`nvn.c`, `overlay.c`, `font.c`). The wrapper on
-`nvnBootstrapLoader` wraps `nvnDeviceGetProcAddress` and, through it, `nvnQueuePresentTexture` (draw,
-then present), `nvnWindowBuilderSetTextures` (the swapchain textures) and `nvnDeviceInitialize` (the
-device). No shaders: the text is rasterised on the CPU into a buffer in the swapchain's format and
-copied into the texture about to be presented with `nvnCommandBufferCopyBufferToTexture`, from two
-slots that alternate, each reused only once its sync says the GPU is done. Nothing is read back from
-the picture, so there's no wait on the game's rendering. A slot is only rasterised again when its text
-changes. The controller thread hands the text to the present thread through a sequence lock.
+**Hooks.** The wrapper on `nvnBootstrapLoader` (`nvn.c`) wraps `nvnDeviceGetProcAddress` and, through it,
+`nvnQueuePresentTexture` (draw, then present), `nvnWindowBuilderSetTextures` (the swapchain textures),
+`nvnDeviceInitialize` (the device), and `nvnCommandBufferSetTexturePool` and `SetSamplerPool` (to know the
+pools the game last set, which the game-style drawing puts back). Before each present `overlay.c` takes
+one of two recording slots (`slots.c`: command memory, control memory and a fence each, a slot reused only
+once its fence says the GPU is done; a frame whose slot is still busy goes undrawn, and after 5 s of that
+the list gives up) and records either path into it. Nothing is read back from the picture, so there's no
+wait on the game's rendering.
+
+**Our own NVN calls bypass every add-on's hooks.** `nvn_proc` asks the sdk's own `nvnBootstrapLoader`
+(this module imports it) for `nvnDeviceGetProcAddress`, not the wrapper chain, so what the module calls
+is never seen by sloperinaGZ's hooks or ours (a recorded `SetTexturePool` of our own pool would otherwise
+be put back as the game's). The module and sloperinaGZ share nothing on the GPU: each has its own
+memory pools, descriptor pools, atlas and command buffer, and each puts the game's pools back after
+drawing. In the order seen in the logs (sloperinaGZ's DT_INIT first) the present goes game -> ocarinaMIDI
+-> sloperinaGZ -> NVN: the list is drawn first, sloperinaGZ's panels over it.
+
+**The game's style** (`gameui.c`, `gpuui.c`, ported from sloperinaGZ's game style). `gameui_load` reads,
+once and on the game thread, the first time songs are switched: the game's UI shader
+(`content:/Layout2Shader/MergeShader...bfsha.zs`, two of its programs, found by their options as the game's
+own runtime does) and the fonts Clarimo UD PE regular and DemiBold (`content:/Font2/Scalable/...bfotf.zs`),
+through `gamefile.c`: zstd with the game's dictionary (`zstd.c` over zstd's educational decoder), then the
+font scramble, then stb_truetype. Nothing of them is stored. On the render thread `gpuui_init` builds the
+GPU side once (shader pool, states, a 512x512 RG8 glyph atlas, 512 quads per frame): each quad is one
+draw of the shader's quad program with its element in a storage buffer, glyphs from the atlas with their
+shadow baked in, blended straight over the picture. `gameui.c` lays it out at sloperinaGZ's sizes
+(a font pixel is a 360th of the picture's height): a near-black box at 84% opacity, the place in gold
+DemiBold over a hairline with the state at the right, the songs in regular type, the selected one in
+bold white on a band that fades at both ends. Not ported: sloperinaGZ's game pictures (its BNTX archive,
+which holds the options cursor drawn round a selection, and the title ornament), which would need the
+244 MB archive read and a few MB of the game's heap; sloperinaGZ shows the same band and hairline until
+its pictures load.
+
+**The plain panel** (`overlay_cpu.c`, `font.c`, 0.2.0's): the text is rasterised on the CPU with an 8x8
+font into a buffer in the swapchain's format and copied into the texture about to be presented with
+`nvnCommandBufferCopyBufferToTexture`, a buffer per slot, rasterised again only when its text changes. It
+is used when the game's style can't be: `gameui_load` failed (a file isn't there, no memory, the shader
+isn't the one this module knows), or the GPU side didn't start. Each says why in the log. Its buffers
+(about 1.6 MiB at 1080p) are only taken when it is first used.
 
 ## The converter
 
