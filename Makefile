@@ -40,7 +40,7 @@ LDLIBS                = -lgcc
 
 CSRC                  = $(wildcard $(SRCDIR)/*.c)
 SSRC                  = $(wildcard $(SRCDIR)/*.S)
-HDRS                  = $(wildcard $(SRCDIR)/*.h)
+HDRS                  = $(wildcard $(SRCDIR)/*.h) $(wildcard $(SRCDIR)/third_party/*) # third_party/*.c are #included
 OBJS                  = $(patsubst $(SRCDIR)/%,$(OBJDIR)/%.o,$(basename $(SSRC) $(CSRC)))
 
 all: $(BINDIR)/$(SUBSDK)
