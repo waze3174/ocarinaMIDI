@@ -86,10 +86,21 @@ modes where the game teaches a song. The scarecrow's song can't be predicted, so
   first controller (style and NpadIdType) the game reads is the anchor, and a read of it at least 8 ms
   after the last starts a frame (`poll.c`).
 - **Timing** is by the clock: the system tick (`cntpct_el0`), in milliseconds. At each frame the song
-  gives the game the next event once its time has come, one event per frame at most (FORMAT.md,
-  Playback). 0.1 stepped one tick per counted frame, so the tempo followed the game's frame rate, which
-  the 0.1.1 live test measured at 24.6 to 39 frames a second. A frame-counting mode wasn't kept: it would
-  need a flag in the file or a control, and a second path through the player.
+  gives the game the next event once its time has come, one event per frame at most, skipping events
+  that would come too late (FORMAT.md, Playback). 0.1 stepped one tick per counted frame, so the tempo
+  followed the game's frame rate, which the 0.1.1 live test measured at 24.6 to 39 frames a second. A
+  frame-counting mode wasn't kept: it would need a flag in the file or a control, and a second path
+  through the player.
+- **Keeping up.** One event per frame means a song whose events come faster than the frames falls
+  behind. 0.2 gave every event anyway, late and one frame each, so a fast run dragged and the song then
+  jumped back to time at the next rest ("buffering"). In the songs converted so far, 10 to 49% of events
+  are one tick (33 ms) after the one before: a released tick before a repeated note, or a one-tick note.
+  So any frame rate under 30, or any hitch under the 250 ms stall limit, made dense songs lag: replayed
+  against steady 20 fps frames, the densest fell up to 1.8 s behind. Now an event is skipped once the one
+  after it has been due for more than `CATCH_UP_MS` (50 ms); replayed against 20 fps frames with jitter
+  and short hitches, the same songs keep about 98% of their notes, 95% of them within about 70 ms. A note
+  repeated across a skip would reach the game as one held press, so then the event before it (the
+  release, or another note) is given instead. The 250 ms stall rule still pauses the song across a load.
 - **Each frame** (`app.c`): the song moves on (`player.c`), then the buttons held during the frame that
   ended are checked for the controls (`controls.c`), and the song list's text is handed to the
   overlay. The playlist is read when R3 goes down (not while a song plays) and a song when it starts,
@@ -155,6 +166,23 @@ fitting the range, the button for each semitone (`NOTE_PLAN`, `LAYOUTS`), the st
 alternate fingerings, rounding to ticks, and a released tick between two notes on the same button.
 Changing how a note is played needs no new module build. The file format is in [FORMAT.md](FORMAT.md).
 
+**Notes in time** (`in_time`). Each note starts on its own rounded tick. A note needs `--min-hold` ticks
+before the next one starts, and a released tick more when both are on the same button; of two notes too
+close for that, the shorter is left out. 0.2 pushed the later note back instead, which made the rest of a
+dense passage late (up to 12 ticks in the densest song tried) until the next rest. Notes are left out
+before the game's songs are looked for, so the alternate fingering goes on a note that is played, and
+leaving notes out can't put one of the game's songs together unnoticed.
+
+**The melody's part** (`parts`, `likely_melody`). A part is one track's notes on one channel (drums
+left out). `--list` and `--pick` show them; `--pick` asks for one, the drop bat always passes it. The
+likely melody is a guess: the share of the part's notes that are one at a time (square root, so a line
+doubled in octaves still counts), how much of the song it plays, how many of its notes fit the ocarina
+without folding, and its median pitch (middle C and up counts fully), then weighed up for a name like
+"melody" or "vocals" or a lead instrument (synth lead, reed, pipe, brass), and down for a name like
+"bass" or "chords" or a bass instrument. Converting all parts together, as 0.2 always did, takes the
+highest note of every instrument at each moment, which is often much denser than the melody (Cantina:
+1758 events against 908 for its melody part).
+
 It reports each place the melody holds one of the game's songs note for note (`GAME_SONGS`, the N64
 melodies) and the note it played differently there; with `--allow-songs` it plays them plainly and
 warns instead. `tools/live_test_songs.py` writes the songs for the live test ([TESTING.md](TESTING.md)).
@@ -163,7 +191,9 @@ warns instead. `tools/live_test_songs.py` writes the songs for the live test ([T
 
 - One note at a time; no velocity, no MIDI pitch bend.
 - One event per counted frame: if the game read its anchor controller twice in one frame, at least
-  8 ms apart, a song catching up could give two events in that frame.
+  8 ms apart, two events could reach the game in that frame and it would see only the second.
+- Notes faster than the game's frames are skipped, not slowed down: at 20 frames a second a fast run
+  plays about one note a frame. The skip limit is a constant in the module (`CATCH_UP_MS`).
 - The controller reads are assumed to come from one thread; frames counted from two threads at once
   could step the song twice.
 - The game's songs are only avoided in free play (see the matcher), and the scarecrow's not at all.

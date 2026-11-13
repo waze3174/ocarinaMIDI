@@ -2,12 +2,14 @@
 
 - [devkitA64](https://devkitpro.org/wiki/Getting_Started), with `DEVKITPRO` set: devkitPro's MSYS2 shell
   sets it (`/opt/devkitpro`).
-- Python 3 for `make test`.
+- Python 3 for `make test`, and a C compiler for the PC for the player's tests (`$CC`, or `cc`, `gcc` or
+  `clang` on the PATH, or LLVM in its default place on Windows); without one they are skipped.
 
 ```
 make            # bin/subsdk8
-make dist       # dist/emulator/load/0400486024DEC000/ocarinaMIDI/exefs/subsdk8, dist/atmosphere/...
-make test       # the converter's tests
+make dist       # dist/emulator/load/0400486024DEC000/ocarinaMIDI/exefs/subsdk8, dist/atmosphere/...,
+                # dist/emulator-converter (the drop bat and converter, to put next to an emulator's exe)
+make test       # the converter's and the player's tests
 make release    # dist, then dist/ocarinaMIDI-<version>.zip for a GitHub release
 ```
 

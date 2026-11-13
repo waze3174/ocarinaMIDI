@@ -4,8 +4,9 @@
 Saria's Song. The stop lines measured 24.6 to 39 frames a second against songs made for 30, which is
 why 0.2.0 times songs by the clock. In 0.2.0 the clock timing and the plain song list are confirmed in
 game; avoiding the game's songs hasn't been tried yet. 0.3.0 draws the song list in the game's own style,
-which is untested in game. Steps marked **new** cover what changed (the game-style song list, with and
-without sloperinaGZ); the others check nothing regressed.
+keeps fast songs in time (it skips what it can't give in time instead of falling behind), and its drop bat
+asks which part of a song is the melody and works next to the emulator's exe; none of that is tested in
+game yet. Steps marked **new** cover what changed; the others check nothing regressed.
 
 ## Setup
 
@@ -81,7 +82,7 @@ D4 F4 A4 B4 D5, one second each. When it ends:
 
 ```
 stopped (end of the song) at 7.1xx s of 7.1xx s, after 7.1xx s: N frames, F per second
-timing: events up to L ms late; 0 stalls paused it for 0 ms; E controller states edited per frame
+timing: events up to L ms late; 0 notes skipped to keep time; 0 stalls paused it for 0 ms; E controller states edited per frame
 ```
 
 - "after" (wall time) matches "of" (the song's length): the tempo is right whatever **F** is.
@@ -105,17 +106,49 @@ By ear, the notes are evenly spaced in both places.
 - t7: A4 eight times at 0.25 s, 0.125 s and 1/16 s: 24 presses. Also count them at a lower frame rate:
   still 24, as each press and each release gets a frame of its own.
 
-## 6. A dense song (new)
+## 6. Fast songs keep their time (new)
 
-`dragonforce - Through the Fire and Flames.mid` (439 s, 5429 events, 30 of them in its busiest second:
-one per tick) and `rick astley - never gonna give you up.mid` (a lighter one). This is the stress test
-for the one-frame minimum and the released frame before a repeated note.
+What was reported: fast songs "buffer weirdly". Cause (DESIGN.md, Keeping up): when notes came faster
+than the game's frames, the module gave every one of them late, a frame each, so a fast run dragged and
+the song then jumped back to time at the next rest; the converter also pushed notes too close together
+later. Now the module skips what it can't give within 50 ms, and the converter leaves such notes out.
 
-- No note sticks and no repeated note merges (listen in the fastest runs).
-- The timing line's **L** stays small at 30 fps and grows at lower rates, and "after" exceeds "of" by
-  at most about L: the song falls behind in fast runs and catches up after them.
+Songs: `dragonforce_-_Through_the_Fire_and_Flames` (the densest), `Metallica_-_Fuel`, `metallica_-_one`,
+`CANTINA`. Play each twice: the file you have now (converted by 0.2, all parts), then the same song
+converted again (`dist\songs-0.3.0`, or drop the MIDI on the new bat and press 0 for all parts). Note
+the emulator's fps counter while it plays.
+
+- By ear: fast runs stay on the beat and the song never stalls then rushes. Some notes of a very fast
+  run are missing at low frame rates; that's expected (about one note per frame).
+- The stop lines: "after" within about 0.1 s of "of"; **L** about 100 ms or less (more only right after
+  a hitch shorter than 250 ms); "N notes skipped to keep time" above 0 in these songs below 30 fps.
+  Write down F (per second), L and N for each: they show how much the module had to skip.
+- No note sticks, and repeated notes stay separate (listen in the fastest runs).
 - A load or a hitch during the song shows as "N stalls paused it for M ms"; the song carries on from
   where it was.
+- `rick_astley_-_never_gonna_give_you_up` (a light song): sounds as before, and few or no notes skipped.
+- If a song still sounds wrong, note the song, the time in it, the fps and the stop lines.
+
+## 6b. Choosing the melody, and the bat next to the emulator (new)
+
+On the PC, no game needed.
+
+1. Copy `drop-midi-here.bat` and `midi2oca.py` from `dist\emulator-converter` next to the emulator's exe
+   (the folder holding its `user` folder).
+2. Drop two MIDI files on it at once, e.g. `CANTINA.mid` and `ABBA - Gimme Gimme Gimme.mid`.
+   - It doesn't ask for a folder, and says `Songs go to "...\user\sdmc\ocarinaMIDI\songs"`.
+   - For each file it lists the parts (`track N, channel C, name, instrument, notes, range, chords`)
+     with `0  all parts together` first and one marked `<- likely the melody` ("Cantina Band" and
+     "Melody" for these two).
+   - Enter takes the marked part and prints `melody: ... (--track N --channel C)`; a number takes that
+     part; 0 takes all parts; anything else asks again. A MIDI with one part isn't asked about.
+   - Both songs land in the emulator's playlist.
+3. Play a song converted as its melody part next to the same song converted with all parts: the melody
+   should be clearer and lighter (fewer notes).
+4. The same bat in another folder (no `user\sdmc` next to it): it asks for the SD card folder the first
+   time and remembers it in `sd-path.txt` beside it.
+5. Without Python 3, the bat says "Python 3 was not found" (the Microsoft Store's `python` stub, which
+   only offers to install Python, doesn't count).
 
 ## 7. t8, one of the game's songs (new)
 

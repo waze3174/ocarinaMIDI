@@ -15,10 +15,21 @@ game while it runs; nothing of them is in this repository or the release. If it 
 found, or there is no memory for them), the song list falls back to the plain panel of 0.2.0, so it still
 shows. sloperinaGZ's selection frame (the game's cursor pictures) is not drawn: the plain band stands in.
 
+Fast songs keep their time. When notes come faster than the game's frames (a fast run, a frame rate under
+30, a hitch), the module now skips the notes it can't give in time instead of playing them all late and
+then rushing to catch up, and the converter leaves out notes too close together for its ticks instead of
+pushing the rest of the song late. Songs converted before keep working; converting them again removes the
+converter's part of the lag (the converter says how many notes it left out).
+
+The drop bat asks which part of each song is the melody: it lists the song's tracks and channels with
+their instrument, note count and range, marks the likely melody, and Enter takes it. A single part is
+usually much lighter than all of them together. Next to an emulator's exe, the bat puts songs straight into
+that emulator's `user\sdmc`.
+
 Status: 0.2.0 was tested in an emulator on game version 1.1.1, next to sloperinaGZ: songs keep their tempo
 (a 59 s stretch played in exactly 59 s) and the song list shows when switching songs. 0.3.0's game-style
-song list has not been tried in game yet, nor has avoiding the game's own songs; 1.0.0 and real consoles are
-untested. See [docs/TESTING.md](docs/TESTING.md).
+song list and its timing for fast songs have not been tried in game yet, nor has avoiding the game's own
+songs; 1.0.0 and real consoles are untested. See [docs/TESTING.md](docs/TESTING.md).
 
 ## What you need
 
@@ -36,10 +47,14 @@ The emulator's user folder is `user\` next to `lichii.exe` (portable) or `%APPDA
 2. Convert a song onto the emulator's SD card: drag `.mid` files onto `tools\drop-midi-here.bat`, or
 
    ```
-   python tools\midi2oca.py song.mid --sd "<user folder>\sdmc"
+   python tools\midi2oca.py song.mid --sd "<user folder>\sdmc" --pick
    ```
 
-   This writes `sdmc\ocarinaMIDI\songs\song.oca` and adds it to `songs\playlist.txt`.
+   This writes `sdmc\ocarinaMIDI\songs\song.oca` and adds it to `songs\playlist.txt`. For each song the
+   bat asks which part is the melody (Enter takes the one marked as likely). With `drop-midi-here.bat` and
+   `midi2oca.py` next to the emulator's exe (portable, with its `user` folder), the songs go to that
+   `user\sdmc` without asking; anywhere else the bat asks for the SD card folder once and remembers it in
+   `sd-path.txt`.
 
 ## Playing
 
@@ -64,20 +79,30 @@ log, on lines starting `ocarinaMIDI:` (Lichii logs them under `Debug.Emulated`, 
 ## Converting songs
 
 ```
-python tools\midi2oca.py song.mid --list                       the tracks and channels
-python tools\midi2oca.py song.mid --sd <sdmc> --track 1        one track
+python tools\midi2oca.py song.mid --list                       its parts, the likely melody marked
+python tools\midi2oca.py song.mid --sd <sdmc> --pick           ask which part is the melody
+python tools\midi2oca.py song.mid --sd <sdmc> --track 1        one track (numbers from --list)
 python tools\midi2oca.py song.mid --sd <sdmc> --channel 4      one channel
 python tools\midi2oca.py song.mid --sd <sdmc> --transpose -5   your own transposition
 ```
 
 - **One note at a time.** The ocarina can't play chords: the highest note of a chord is kept, and a
-  lower note only takes over when the one sounding is ending. Channel 10 (drums) is dropped. For a
-  song with accompaniment, pick the melody's track or channel.
+  lower note only takes over when the one sounding is ending. Channel 10 (drums) is dropped. Without
+  `--track`, `--channel` or `--pick` every other part is used, so the accompaniment's notes get in
+  wherever they are the highest; for a song with accompaniment, pick the melody.
+- **Picking the melody.** A part is one track's notes on one channel. `--list` and `--pick` show each
+  with its name, its instrument (General MIDI's family), its notes, its range and whether it plays
+  chords, and mark the likely melody: the part that plays one note at a time through much of the song,
+  above middle C and in the ocarina's range, helped by a name like "melody" or "vocals". It's a guess;
+  check it by ear. `--pick` asks for a number (0 for all parts together); Enter, or no answer at all
+  (input that isn't a console), takes the likely melody. `--track` or `--channel` skip the question.
 - **Range.** The ocarina plays B3 to F5. The whole song is transposed to fit best (an octave shift when
   that's as good), then notes still outside are moved by octaves. The converter says how many.
-- **Timing** follows the clock, whatever the game's frame rate. Notes are rounded to ticks, 30 a second
-  (`--tick-rate`). Each note and each gap before a repeated note reaches the game for at least a frame,
-  so in a passage faster than the game's frames notes come a little late and the song catches up after.
+- **Timing** follows the clock, whatever the game's frame rate. Each note starts on its own tick, 30 a
+  second (`--tick-rate`), lasts a tick at least, and a repeated note gets a released tick before it; where
+  notes come too fast for that, the shorter of two is left out. In the game, each press and release
+  reaches the game for a frame at least; when notes come faster than the frames, a note is skipped once
+  the one after it has been due for 50 ms, so the song stays within about a frame of the clock.
 - **Buttons.** `--layout game` (the default) is the game's standard ocarina controls; use
   `--layout performance` if you swapped them in the options. `--stick-half`, `--stick-full`,
   `--invert-stick` and `--bend-stick` tune the five notes played with a stick bend (B3, C4, G4, E5, F5).
@@ -87,7 +112,8 @@ python tools\midi2oca.py song.mid --sd <sdmc> --transpose -5   your own transpos
   `--allow-songs` plays them plainly, so the game may take them as its songs (warp songs move Link).
 - **The playlist.** `--sd` also drops playlist lines whose `.oca` file is gone.
 
-Run the converter's tests with `make test` (or `python -m unittest discover -s tests -t .`).
+Run the converter's and the player's tests with `make test` (or `python -m unittest discover -s tests -t .`;
+the player's need a C compiler for the PC).
 
 ## Building
 

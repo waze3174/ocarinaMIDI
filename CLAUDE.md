@@ -8,7 +8,8 @@ songs as ocarina input, and the PC converter. See README.md, docs/DESIGN.md (how
 
 - Build: `make` from devkitPro's MSYS2 shell (`make dist` for the install folders); see docs/BUILDING.md.
   Don't build while the emulator is running on the machine you test on.
-- Tests: `make test`, or `python -I -m unittest discover -s tests -t .` from the repo root.
+- Tests: `make test`, or `python -I -m unittest discover -s tests -t .` from the repo root. The player's
+  tests build `src/player.c` for the PC with `tests/player_host.c` (set `CC` if no compiler is found).
 
 ## Rules
 

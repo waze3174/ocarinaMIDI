@@ -31,14 +31,22 @@ a release, one tick before the length.
 
 The module plays by the clock (`src/player.c`). At each game frame it gives the game the next event
 once that event's time has come, and never more than one event per frame, so every press and every
-release reaches the game for at least one frame. Events that come due faster than the game's frames
-(a dense passage at a low frame rate) are given late, in order, and the song catches up at the next
-gap. The song ends a frame after its last event, once its length has passed. A wait of more than
-250 ms between two frames (loading, a hitch) pauses the song for that long instead of rushing through
-what it missed.
+release reaches the game for at least one frame. When events come due faster than the game's frames (a
+dense passage, a low frame rate, a short hitch), an event is skipped once the event after it has been due
+for more than 50 ms (`CATCH_UP_MS`), so the song stays within about that and a frame of the clock instead
+of falling behind and rushing to catch up at the next gap. One exception: if skipping would leave a note
+the game holds already (a note repeated, with the release between skipped too), the event before it is
+given instead, the release or another note, so the repeat still sounds. The song ends a frame after its
+last event, once its length has passed. A wait of more than 250 ms between two frames (loading, a hitch)
+pauses the song for that long instead of skipping what it missed.
 
-The converter keeps each note at least one tick long and puts one released tick between two notes on
-the same button; the one-event-per-frame rule makes each of those at least one game frame.
+The converter starts each note on its own tick, keeps it at least one tick long and puts one released
+tick between two notes on the same button. Where two notes are too close for that, it leaves out the
+shorter, so the file never runs late of the MIDI either.
+
+0.2 gave every event, late, when they came faster than the frames (at 20 frames a second, up to 2 s
+behind in the densest song tried), and its converter pushed notes too close together later (up to
+0.4 s). Its files play with the new module; converting them again removes the converter's part.
 
 ## History
 
