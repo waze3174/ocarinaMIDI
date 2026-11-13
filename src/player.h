@@ -1,5 +1,5 @@
 /* Plays a song by the clock: at each game frame, the song's input that has come due (one event at
- * most), given to the game in place of the controller's. */
+ * most, skipping events too late to give), given to the game in place of the controller's. */
 #ifndef PLAYER_H
 #define PLAYER_H
 
