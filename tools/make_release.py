@@ -21,8 +21,11 @@ Console (Atmosphere)
   atmosphere\\contents\\{program_id}\\exefs\\subsdk8. Untested on a real console so far.
 
 Songs
-  Install Python 3. Drag .mid files onto converter\\drop-midi-here.bat: the first time, it asks for the
-  emulator's SD card folder (usually user\\sdmc next to its exe). Or run converter\\midi2oca.py (--help for options).
+  Install Python 3. Drag .mid files onto converter\\drop-midi-here.bat. For each song it lists the parts
+  (tracks and channels) and asks which one is the melody; Enter takes the one marked as likely.
+  Put the converter folder's two files next to the emulator's exe, and the songs go straight to its
+  user\\sdmc. Anywhere else, the first time, it asks for the emulator's SD card folder (usually
+  user\\sdmc next to its exe). Or run converter\\midi2oca.py (--help for options).
 
 Playing
   Take out the ocarina, then hold R3 (right stick in) and press:

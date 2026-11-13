@@ -2,8 +2,8 @@
 # Adapted from sloperinaGZ's Makefile (GPL-3).
 #
 #   make            build bin/subsdk8
-#   make dist       stage install trees in dist/ (emulator/, atmosphere/)
-#   make test       the converter's tests (Python 3)
+#   make dist       stage install trees in dist/ (emulator/, atmosphere/, emulator-converter/)
+#   make test       the converter's and the player's tests (Python 3; the player's need a C compiler for the PC)
 #   make clean
 #
 # Needs devkitA64 (DEVKITPRO set, e.g. devkitPro's MSYS2 shell) and Python 3 for the tests.
@@ -63,12 +63,14 @@ $(OBJDIR) $(BINDIR):
 #   emulator/load/<program id>/ocarinaMIDI/exefs/subsdk8  (Lichii / Eden: <user>/load/...)
 #   atmosphere/contents/<program id>/exefs/subsdk8
 #   sd/ocarinaMIDI/songs/                                  (the SD card: songs from tools/midi2oca.py)
+#   emulator-converter/                                    (the drop bat and the converter, to go next to an emulator's exe)
 dist: all
 	rm -rf $(DISTDIR)
 	mkdir -p $(DISTDIR)/emulator/load/$(PROGRAM_ID)/$(NAME)/exefs $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs \
-	         $(DISTDIR)/sd/$(NAME)/songs
+	         $(DISTDIR)/sd/$(NAME)/songs $(DISTDIR)/emulator-converter
 	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/emulator/load/$(PROGRAM_ID)/$(NAME)/exefs/
 	cp $(BINDIR)/$(SUBSDK) $(DISTDIR)/atmosphere/contents/$(PROGRAM_ID)/exefs/
+	cp tools/drop-midi-here.bat tools/midi2oca.py $(DISTDIR)/emulator-converter/
 
 release: dist
 	$(PYTHON) -I tools/make_release.py $(BINDIR)/$(SUBSDK) $(DISTDIR)
