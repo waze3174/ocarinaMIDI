@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include "controls.h"
+#include "gameui.h"
 #include "player.h"
 #include "songlist.h"
 #include "songs.h"
@@ -24,6 +25,7 @@ static void select_song(int step)
   }
   if (!songs_count())
     return;
+  gameui_load(); /* the list is wanted: the game's font and shader, once */
   selected = songs_step(selected, step);
   log_printf("song %d of %d: %s", selected + 1, songs_count(), songs_name(selected));
   songlist_linger();

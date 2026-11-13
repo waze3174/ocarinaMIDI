@@ -1,8 +1,10 @@
-/* Before each of the game's presents (nvn.c): draws the song list, if it's shown, in the plain panel
- * (overlay_cpu.c), as one command buffer on a slot (slots.c). The panel itself comes from the game's controller thread
+/* Before each of the game's presents (nvn.c): draws the song list, if it's shown, in the game's own style
+ * (gameui.c) or, when that can't be, in the plain panel (overlay_cpu.c), and either way as one
+ * command buffer on a slot (slots.c). The panel itself comes from the game's controller thread
  * (songlist.c). Adapted from sloperinaGZ's src/ootgz/nvn.c (GPL-3). */
 #include "overlay.h"
 
+#include "gameui.h"
 #include "nvn.h"
 #include "overlay_cpu.h"
 #include "slots.h"
@@ -49,14 +51,18 @@ static void overlay_fail(const char *why)
   state = OV_FAILED;
 }
 
+/* Whether either panel can draw on this picture: the game's style, else the plain one. */
 static bool can_draw(const nvn_texture_info_t *info)
 {
-  return overlay_cpu_usable(info);
+  return gameui_usable() || overlay_cpu_usable(info);
 }
 
+/* Records the panel into the slot's commands, in the game's style if it can be. */
 static bool record(nvn_obj_t *cmd, int slot, nvn_texture_t *texture, const nvn_texture_info_t *info, nvn_rect_t area,
                    const overlay_panel_t *panel)
 {
+  if (gameui_usable())
+    return gameui_record(cmd, slot, texture, info, area, panel);
   return overlay_cpu_record(cmd, slot, texture, info, area, panel);
 }
 
