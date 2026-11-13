@@ -2,20 +2,24 @@
 
     python midi2oca.py song.mid --sd <emulator user folder>/sdmc      write it and add it to the playlist
     python midi2oca.py song.mid --out song.oca                         just write the file
-    python midi2oca.py song.mid --list                                 show the tracks and channels
+    python midi2oca.py song.mid --list                                 show its parts (tracks and channels)
+    python midi2oca.py song.mid --sd <sdmc> --pick                     ask which part is the melody
 
 One note at a time: the highest of notes that start together, and a lower note only takes over when the
-one sounding is about to end (legato). Channel 10 (drums) is dropped. The song is moved into the ocarina's
-range (B3-F5) by one transposition for the whole song, then any notes still outside are moved by octaves.
-Each note becomes the ocarina's buttons (docs/FORMAT.md), timed in ticks (30 a second by default).
+one sounding is about to end (legato). Channel 10 (drums) is dropped. All the other parts are used unless one
+is picked (--track, --channel, or --pick to choose from a list with the likely melody marked). The song is moved
+into the ocarina's range (B3-F5) by one transposition for the whole song, then any notes still outside are moved
+by octaves. Each note becomes the ocarina's buttons (docs/FORMAT.md), timed in ticks (30 a second by default):
+each starts on its own tick, and where notes come too fast for the ticks some are left out, so none comes late.
 Where the melody holds one of the game's own songs note for note, one of its notes is played with an alternate
 fingering (same pitch), so the game doesn't take it as that song; --allow-songs keeps them as the game's songs.
 """
 import argparse
+import math
 import re
 import struct
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 # --- the ocarina --------------------------------------------------------------------------------------
@@ -95,6 +99,7 @@ class Note:
 class Track:
     name: str
     notes: list
+    programs: dict = field(default_factory=dict)  # channel: its first program change (instrument) in this track
 
 
 # --- reading MIDI -----------------------------------------------------------------------------------------
@@ -124,7 +129,8 @@ def chunks(data):
 
 
 def parse_track(data):
-    """The track's events as (tick, kind, values): ("on"/"off", channel, pitch), ("tempo", us), ("name", text)."""
+    """The track's events as (tick, kind, values): ("on"/"off", channel, pitch), ("program", channel, number),
+    ("tempo", us), ("name", text)."""
     events, pos, tick, status = [], 0, 0, None
     while pos < len(data):
         delta, pos = read_vlq(data, pos)
@@ -166,6 +172,8 @@ def parse_track(data):
             events.append((tick, "on", channel, values[0]))
         elif kind in (0x80, 0x90):
             events.append((tick, "off", channel, values[0]))
+        elif kind == 0xC0:
+            events.append((tick, "program", channel, values[0]))
     return events, tick
 
 
@@ -201,10 +209,12 @@ def read_midi(data):
     to_seconds = tick_clock(tempos, division)
     tracks = []
     for index, (events, end_tick) in enumerate(parsed):
-        sounding, notes, name = {}, [], ""
+        sounding, notes, name, programs = {}, [], "", {}
         for tick, kind, *values in events:
             if kind == "name" and not name:
                 name = values[0].strip()
+            elif kind == "program":
+                programs.setdefault(*values)
             elif kind == "on":
                 sounding.setdefault(tuple(values), []).append(tick)
             elif kind == "off" and sounding.get(tuple(values)):
@@ -212,7 +222,7 @@ def read_midi(data):
                 notes.append(Note(to_seconds(start), to_seconds(tick), values[1], values[0], index))
         for (channel, pitch), starts in sounding.items():
             notes += [Note(to_seconds(start), to_seconds(end_tick), pitch, channel, index) for start in starts]
-        tracks.append(Track(name, sorted(notes, key=lambda n: (n.start, -n.pitch))))
+        tracks.append(Track(name, sorted(notes, key=lambda n: (n.start, -n.pitch)), programs))
     return tracks
 
 
@@ -274,6 +284,69 @@ def fit_range(notes, transpose=None):
     shift = best_transpose([n.pitch for n in notes]) if transpose is None else transpose
     folded = out_of_range([n.pitch for n in notes], shift)
     return [replace(n, pitch=fold_into_range(n.pitch + shift)) for n in notes], shift, folded
+
+
+# --- choosing the melody's part ----------------------------------------------------------------------------------
+# General MIDI's instrument families, eight programs each
+INSTRUMENT_FAMILIES = ("piano", "chromatic percussion", "organ", "guitar", "bass", "strings", "ensemble", "brass",
+                       "reed", "pipe", "synth lead", "synth pad", "synth effects", "ethnic", "percussive",
+                       "sound effects")
+# The likely melody: a part that plays one note at a time through much of the song, above middle C and inside the
+# ocarina's range scores highest; its name and instrument then weigh the score up or down.
+MELODY_NAMES = re.compile(r"melod|vocal|voice|vox|lead|solo|sing|tune", re.IGNORECASE)
+ACCOMPANIMENT_NAMES = re.compile(r"bass|drum|perc|chord|pad|string|accomp|rhythm|harmon|backing|arp", re.IGNORECASE)
+MELODY_INSTRUMENTS = {"synth lead", "reed", "pipe", "brass"}
+MELODY_NAME_WEIGHT, MELODY_INSTRUMENT_WEIGHT, ACCOMPANIMENT_WEIGHT = 2.0, 1.3, 0.3
+MIDDLE_C = 60
+PITCH_WEIGHTS = ((MIDDLE_C, 1.0), (MIDDLE_C - 12, 0.5))  # (median pitch at least, weight)
+LOW_PITCH_WEIGHT = 0.15
+CHORDS_BELOW = 0.75  # shown as playing chords when the melody keeps fewer of its notes than this
+
+
+@dataclass(frozen=True)
+class Part:
+    """One track's notes on one channel: what the melody is chosen from."""
+    track: int
+    channel: int
+    name: str
+    instrument: str  # the General MIDI family of its first program change, or ""
+    notes: tuple
+
+
+def parts(tracks):
+    """Each track's notes on each channel but the drums', in file order."""
+    found = []
+    for index, track in enumerate(tracks):
+        for channel in sorted({n.channel for n in track.notes} - {DRUM_CHANNEL}):
+            program = track.programs.get(channel)
+            instrument = INSTRUMENT_FAMILIES[program // 8] if program is not None else ""
+            notes = tuple(select_notes(tracks, index, channel))
+            if notes:
+                found.append(Part(index, channel, track.name, instrument, notes))
+    return found
+
+
+def melody_score(part, song_seconds):
+    """How much a part looks like the melody (see MELODY_NAMES)."""
+    line = melody(part.notes)
+    playing = min(1.0, sum(n.end - n.start for n in line) / song_seconds)
+    in_range = 1 - fit_range(line)[2] / len(line)
+    median = sorted(n.pitch for n in line)[len(line) // 2]
+    height = next((weight for lowest, weight in PITCH_WEIGHTS if median >= lowest), LOW_PITCH_WEIGHT)
+    score = math.sqrt(len(line) / len(part.notes)) * playing * in_range * height
+    if MELODY_NAMES.search(part.name):
+        score *= MELODY_NAME_WEIGHT
+    if part.instrument in MELODY_INSTRUMENTS:
+        score *= MELODY_INSTRUMENT_WEIGHT
+    if ACCOMPANIMENT_NAMES.search(part.name) or part.instrument == "bass":
+        score *= ACCOMPANIMENT_WEIGHT
+    return score
+
+
+def likely_melody(found):
+    """The part that looks most like the melody."""
+    song_seconds = max(n.end for part in found for n in part.notes)
+    return max(found, key=lambda part: melody_score(part, song_seconds))
 
 
 @dataclass(frozen=True)
@@ -348,6 +421,36 @@ def fingerings(notes, layout, stick, altered=()):
     return [note_input(note.pitch, layout, stick, i in altered) for i, note in enumerate(notes)]
 
 
+RELEASED_TICKS = 1  # between two notes on the same button, so the game sees it pressed again
+
+
+def same_button(a, b):
+    """True if two notes are played on the same button (the same natural note, in either layout)."""
+    return NOTE_PLAN[a.pitch][0] == NOTE_PLAN[b.pitch][0]
+
+
+def ticks_between(previous, note, min_hold):
+    """The fewest ticks from one note's start to the next one's."""
+    return min_hold + (RELEASED_TICKS if same_button(previous, note) else 0)
+
+
+def in_time(notes, tick_rate, min_hold):
+    """The notes that can each start on their own tick: a note needs min_hold ticks before the next starts, and one
+    released tick more if they share a button (so the game sees it pressed again). Of two notes too close for that,
+    the shorter is left out, so a passage too fast for the ticks thins out instead of making the rest of the song
+    late."""
+    kept = []
+    for note in notes:
+        start = round(note.start * tick_rate)
+        while kept and start < round(kept[-1].start * tick_rate) + ticks_between(kept[-1], note, min_hold):
+            if kept[-1].end - kept[-1].start >= note.end - note.start:
+                break
+            kept.pop()
+        else:
+            kept.append(note)
+    return kept
+
+
 @dataclass
 class Segment:
     start: int  # ticks
@@ -357,28 +460,16 @@ class Segment:
 
 
 def segments(notes, fingered, tick_rate, min_hold):
-    """Tick spans for the notes, played as `fingered` (from fingerings): rounded, never overlapping, at least
-    min_hold long, and with one released tick between two notes on the same button (so the game sees it
-    pressed again)."""
+    """Tick spans for notes from in_time, played as `fingered` (from fingerings): each from its own rounded tick,
+    at least min_hold long, and ending before the next, with one released tick between two notes on the same button
+    (so the game sees it pressed again)."""
+    offset = round(notes[0].start * tick_rate) - LEAD_IN_TICKS if notes else 0
     spans = []
-    offset = None
     for note, (played, button) in zip(notes, fingered):
-        start, end = round(note.start * tick_rate), round(note.end * tick_rate)
-        if offset is None:
-            offset = start - LEAD_IN_TICKS
-        spans.append(Segment(start - offset, end - offset, played, button))
-    for i, span in enumerate(spans):
-        if i:
-            previous = spans[i - 1]
-            span.start = max(span.start, previous.end)
-            if span.button == previous.button and span.start == previous.end:
-                if previous.end - previous.start > min_hold:
-                    previous.end -= 1
-                else:
-                    span.start += 1
-        span.end = max(span.end, span.start + min_hold)
-        if i + 1 < len(spans) and spans[i + 1].start < span.end:
-            span.end = max(spans[i + 1].start, span.start + min_hold)
+        start = round(note.start * tick_rate) - offset
+        spans.append(Segment(start, max(round(note.end * tick_rate) - offset, start + min_hold), played, button))
+    for span, following in zip(spans, spans[1:]):
+        span.end = min(span.end, following.start - (RELEASED_TICKS if following.button == span.button else 0))
     return spans
 
 
@@ -462,11 +553,45 @@ def report_game_songs(windows, altered, notes, layout, stick):
               f"{alternate_fingering_text(pitch, layout, stick)}, the same pitch, so the game won't take it as the song")
 
 
-def list_tracks(tracks):
-    for index, track in enumerate(tracks):
-        channels = sorted({n.channel for n in track.notes})
-        span = f"{min(n.pitch for n in track.notes)}-{max(n.pitch for n in track.notes)}" if track.notes else "-"
-        print(f"track {index}: {track.name or '(no name)'}: {len(track.notes)} notes, channels {channels}, pitches {span}")
+LIKELY = "   <- likely the melody"
+
+
+def describe_part(part):
+    pitches = [n.pitch for n in part.notes]
+    chords = len(melody(part.notes)) < CHORDS_BELOW * len(part.notes)
+    words = [f"track {part.track}, channel {part.channel}", part.name or "(no name)", part.instrument,
+             f"{len(part.notes)} note{'' if len(part.notes) == 1 else 's'}",
+             f"{pitch_name(min(pitches))} to {pitch_name(max(pitches))}",
+             "chords" if chords else ""]
+    return ", ".join(word for word in words if word)
+
+
+def list_parts(found):
+    guess = likely_melody(found) if found else None
+    for part in found:
+        print(describe_part(part) + (LIKELY if part is guess else ""))
+
+
+def ask_for_part(found, title, ask=input):
+    """Lists the parts and asks which one is the melody (Enter, or no answer at all, takes the likely one). Returns
+    the part, or None for all of them together."""
+    guess = likely_melody(found)
+    default = found.index(guess) + 1
+    print(f"{title}: which part is the melody?")
+    print("   0  all parts together (the highest note at each moment)")
+    for number, part in enumerate(found, 1):
+        print(f"  {number:2}  {describe_part(part)}" + (LIKELY if part is guess else ""))
+    while True:
+        try:
+            answer = ask(f"Number, or Enter for {default}: ").strip()
+        except EOFError:
+            print()
+            answer = ""
+        if not answer:
+            return guess
+        if answer.isdigit() and int(answer) <= len(found):
+            return found[int(answer) - 1] if int(answer) else None
+        print(f"Type a number from 0 to {len(found)}.")
 
 
 def parse_args(argv):
@@ -475,9 +600,12 @@ def parse_args(argv):
     where = p.add_mutually_exclusive_group()
     where.add_argument("--sd", type=Path, help="the emulator's SD card folder (user/sdmc); adds the song to the playlist")
     where.add_argument("--out", type=Path, help="write the .oca file here instead")
-    where.add_argument("--list", action="store_true", help="show the tracks and channels, then stop")
+    where.add_argument("--list", action="store_true", help="show the parts (tracks and channels), then stop")
     p.add_argument("--track", type=int, help="only this track (numbers from --list)")
     p.add_argument("--channel", type=int, choices=range(1, 17), metavar="1-16", help="only this channel")
+    p.add_argument("--pick", action="store_true",
+                   help="list the parts and ask which is the melody, unless --track or --channel is given (Enter, "
+                        "or no answer, takes the likely melody)")
     p.add_argument("--transpose", type=int, help="semitones for the whole song (default: the best fit)")
     p.add_argument("--tick-rate", type=int, default=30, help="the timing's resolution, ticks a second (default 30)")
     p.add_argument("--min-hold", type=int, default=1, help="shortest note, in ticks (default 1)")
@@ -505,17 +633,27 @@ def main(argv=None):
     except (OSError, MidiError) as error:
         sys.exit(f"{args.midi}: {error}")
     if args.list:
-        list_tracks(tracks)
+        list_parts(parts(tracks))
         return
-    picked = melody(select_notes(tracks, args.track, args.channel))
+    track, channel = args.track, args.channel
+    if args.pick and track is None and channel is None:
+        found = parts(tracks)
+        part = ask_for_part(found, args.midi.name) if len(found) > 1 else None
+        if part:
+            track, channel = part.track, part.channel
+            print(f"melody: {describe_part(part)} (--track {track} --channel {channel})")
+        elif len(found) > 1:
+            print("melody: all parts together")
+    picked = melody(select_notes(tracks, track, channel))
     if not picked:
         sys.exit("no notes left: check --track and --channel (see --list)")
     fitted, shift, folded = fit_range(picked, args.transpose)
+    played = in_time(fitted, args.tick_rate, args.min_hold)
     stick = Stick(args.stick_half, args.stick_full, -1 if args.invert_stick else 1, args.bend_stick)
-    windows = game_song_windows(n.pitch for n in fitted)
+    windows = game_song_windows(n.pitch for n in played)
     altered = [] if args.allow_songs else notes_to_alter(windows)
-    fingered = fingerings(fitted, args.layout, stick, altered)
-    changes, total = events(segments(fitted, fingered, args.tick_rate, args.min_hold))
+    fingered = fingerings(played, args.layout, stick, altered)
+    changes, total = events(segments(played, fingered, args.tick_rate, args.min_hold))
     title = args.title or next((t.name for t in tracks if t.name), "") or args.midi.stem
     data = song_bytes(title, args.tick_rate, changes, total)
     if args.sd:
@@ -528,9 +666,11 @@ def main(argv=None):
     else:
         path = args.out
         path.write_bytes(data)
-    print(f"{title}: {len(picked)} notes, transposed {shift:+d}, {folded} folded by octaves, "
-          f"{total / args.tick_rate:.1f} s, {len(changes)} events -> {path}")
-    report_game_songs(windows, altered, fitted, args.layout, stick)
+    too_close = len(fitted) - len(played)
+    print(f"{title}: {len(played)} notes" + (f" ({too_close} left out, too close together)" if too_close else "")
+          + f", transposed {shift:+d}, {folded} folded by octaves, {total / args.tick_rate:.1f} s, "
+          f"{len(changes)} events -> {path}")
+    report_game_songs(windows, altered, played, args.layout, stick)
 
 
 if __name__ == "__main__":

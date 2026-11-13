@@ -18,9 +18,10 @@ def convert(data, tick_rate=30, **options):
     tracks = m.read_midi(data)
     picked = m.melody(m.select_notes(tracks, options.get("track"), options.get("channel")))
     fitted, shift, folded = m.fit_range(picked, options.get("transpose"))
-    fingered = m.fingerings(fitted, "game", m.Stick(), options.get("altered", ()))
-    spans = m.segments(fitted, fingered, tick_rate, options.get("min_hold", 1))
-    return fitted, shift, folded, spans
+    played = m.in_time(fitted, tick_rate, options.get("min_hold", 1))
+    fingered = m.fingerings(played, "game", m.Stick(), options.get("altered", ()))
+    spans = m.segments(played, fingered, tick_rate, options.get("min_hold", 1))
+    return played, shift, folded, spans
 
 
 def plain_natural_pitches(notes, fingered):
@@ -132,6 +133,108 @@ class Ticks(unittest.TestCase):
         self.assertTrue(all(s.end - s.start >= 1 for s in spans))
         self.assertTrue(all(a.end <= b.start for a, b in zip(spans, spans[1:])))
 
+    def spans_in_time(self, notes):
+        """in_time and segments on these notes: the notes kept and their spans, once checked that each starts on its
+        own tick, lasts a tick at least and has a released tick before a repeat on the same button."""
+        kept = m.in_time(notes, 30, 1)
+        spans = m.segments(kept, m.fingerings(kept, "game", m.Stick()), 30, 1)
+        offset = round(kept[0].start * 30) - m.LEAD_IN_TICKS
+        self.assertEqual([s.start for s in spans], [round(n.start * 30) - offset for n in kept])
+        for a, b in zip(spans, spans[1:]):
+            self.assertGreaterEqual(a.end - a.start, 1)
+            self.assertLessEqual(a.end, b.start - (1 if a.button == b.button else 0))
+        return kept, spans
+
+    def test_notes_faster_than_the_ticks_thin_out_and_keep_their_time(self):
+        run = [m.Note(i / 60, (i + 1) / 60, (62, 69)[i % 2], 1, 0) for i in range(60)]  # 60 a second for 1 s
+        kept, _ = self.spans_in_time(run + [m.Note(1.5, 2.0, 65, 1, 0)])
+        self.assertEqual(kept[-1].pitch, 65)  # the note after the run is on its own tick: nothing was pushed late
+        self.assertEqual(len(kept) - 1, 30)  # one a tick
+
+    def test_fast_repeats_keep_a_released_tick_and_their_time(self):
+        repeats = [m.Note(i * 0.04, (i + 1) * 0.04, 62, 1, 0) for i in range(25)]  # 1.2 ticks apart for 1 s
+        kept, spans = self.spans_in_time(repeats + [m.Note(1.5, 2.0, 69, 1, 0)])
+        self.assertEqual(kept[-1].pitch, 69)
+        self.assertGreater(len(kept) - 1, 10)
+        changes, _ = m.events(spans)
+        self.assertEqual([bool(i.buttons) for _, i in changes[:-2]], [True, False] * (len(kept) - 1))
+
+    def test_of_two_notes_too_close_the_shorter_goes(self):
+        grace, main = m.Note(0.0, 0.04, 62, 1, 0), m.Note(0.04, 1.0, 63, 1, 0)  # D4 then D#4: both on L
+        self.assertEqual(m.in_time([grace, main], 30, 1), [main])
+        held, short = m.Note(0.0, 0.04, 62, 1, 0), m.Note(0.04, 0.06, 63, 1, 0)
+        self.assertEqual(m.in_time([held, short], 30, 1), [held])
+
+
+def band(names=("Piano", "Melody", "Bass")):
+    """A format 1 file: piano chords (channel 1), a melody line high up (channel 2), a bass line (channel 3) and
+    drums (channel 10), each with its name and a program change."""
+    melody_line = [(i, 1, pitch) for i, pitch in enumerate((72, 74, 76, 77, 79, 77, 76, 74))]
+    chords = [(2 * i, 2, pitch) for i in range(4) for pitch in (48, 52, 55)]
+    bass = [(i, 1, 36 + (i % 2) * 7) for i in range(8)]
+    drums = [(i, 0.5, 38) for i in range(8)]
+    piano, lead, bass_name = names
+    return midi(notes_track(chords, 1, piano, program=0), notes_track(melody_line, 2, lead, program=73),
+                notes_track(bass, 3, bass_name, program=33), notes_track(drums, 10, "Drums"))
+
+
+class ChoosingThePart(unittest.TestCase):
+    def test_each_track_and_channel_is_a_part_but_the_drums(self):
+        found = m.parts(m.read_midi(band()))
+        self.assertEqual([(p.track, p.channel, p.name, p.instrument) for p in found],
+                         [(0, 1, "Piano", "piano"), (1, 2, "Melody", "pipe"), (2, 3, "Bass", "bass")])
+        self.assertEqual(m.describe_part(found[0]), "track 0, channel 1, Piano, piano, 12 notes, C3 to G3, chords")
+        self.assertEqual(m.describe_part(found[1]), "track 1, channel 2, Melody, pipe, 8 notes, C5 to G5")
+
+    def test_one_track_with_several_channels_gives_a_part_each(self):
+        events = [(0, b"\x90\x48\x64"), (480, b"\x80\x48\x00"), (0, b"\x91\x30\x64"), (480, b"\x81\x30\x00")]
+        found = m.parts(m.read_midi(midi(track(events))))
+        self.assertEqual([(p.track, p.channel, len(p.notes)) for p in found], [(0, 1, 1), (0, 2, 1)])
+
+    def test_likely_melody_is_the_high_single_line(self):
+        for names in (("Piano", "Melody", "Bass"), ("", "", "")):
+            with self.subTest(names=names):
+                self.assertEqual(m.likely_melody(m.parts(m.read_midi(band(names)))).channel, 2)
+
+    def test_a_name_can_tell_two_alike_lines_apart(self):
+        line = [(i, 1, pitch) for i, pitch in enumerate((72, 74, 76, 77))]
+        found = m.parts(m.read_midi(midi(notes_track(line, 1, "Synth"), notes_track(line, 2, "Vocals"))))
+        self.assertEqual(m.likely_melody(found).name, "Vocals")
+
+    def ask(self, *answers):
+        found = m.parts(m.read_midi(band()))
+        replies = iter(answers)
+
+        def reply(_prompt):
+            answer = next(replies)
+            if answer is EOFError:
+                raise EOFError
+            return answer
+
+        with redirect_stdout(io.StringIO()) as shown:
+            picked = m.ask_for_part(found, "band.mid", reply)
+        return found, picked, shown.getvalue()
+
+    def test_enter_takes_the_likely_melody_marked_in_the_list(self):
+        found, picked, shown = self.ask("")
+        self.assertIs(picked, found[1])
+        self.assertIn("   2  track 1, channel 2, Melody, pipe, 8 notes, C5 to G5   <- likely the melody", shown)
+        self.assertIn("   0  all parts together", shown)
+
+    def test_a_number_picks_a_part_and_0_all_of_them(self):
+        found, picked, _ = self.ask("3")
+        self.assertIs(picked, found[2])
+        self.assertIsNone(self.ask("0")[1])
+
+    def test_anything_else_asks_again(self):
+        found, picked, shown = self.ask("9", "bass", "1")
+        self.assertIs(picked, found[0])
+        self.assertEqual(shown.count("Type a number from 0 to 3."), 2)
+
+    def test_no_answer_at_all_takes_the_likely_melody(self):
+        found, picked, _ = self.ask(EOFError)
+        self.assertIs(picked, found[1])
+
 
 class GameSongs(unittest.TestCase):
     SARIA = m.GAME_SONGS["Saria's Song"]
@@ -237,8 +340,34 @@ class SongFile(unittest.TestCase):
 
 
 class CommandLine(unittest.TestCase):
-    def run_converter(self, *options):
-        saria = [(i * 0.5, 0.5, pitch) for i, pitch in enumerate(m.GAME_SONGS["Saria's Song"])]
+    def pick(self, answer, *options):
+        """What the converter prints for band() with --pick, when this answer is typed."""
+        with tempfile.TemporaryDirectory() as folder:
+            source, out = Path(folder) / "band.mid", Path(folder) / "band.oca"
+            source.write_bytes(band())
+            stdout = io.StringIO()
+            stdin, sys.stdin = sys.stdin, io.StringIO(answer)
+            try:
+                with redirect_stdout(stdout):
+                    m.main([str(source), "--out", str(out), "--pick", *options])
+            finally:
+                sys.stdin = stdin
+        return stdout.getvalue()
+
+    def test_pick_converts_the_part_chosen(self):
+        stdout = self.pick("\n")
+        self.assertIn("melody: track 1, channel 2, Melody", stdout)
+        self.assertIn("(--track 1 --channel 2)", stdout)
+        self.assertIn(": 8 notes,", stdout)  # the melody line
+        self.assertIn(": 4 notes,", self.pick("1\n"))  # the piano's four chords, their top notes
+        self.assertIn("melody: all parts together", self.pick("0\n"))
+
+    def test_track_or_channel_given_means_no_question(self):
+        self.assertNotIn("which part", self.pick("", "--channel", "1"))
+
+    def run_converter(self, *options, extra=()):
+        """Saria's Song, 0.5 s a note, with `extra` notes (start s, length s, pitch), converted with these options."""
+        saria = [(i * 0.5, 0.5, pitch) for i, pitch in enumerate(m.GAME_SONGS["Saria's Song"])] + list(extra)
         with tempfile.TemporaryDirectory() as folder:
             source, out = Path(folder) / "saria.mid", Path(folder) / "saria.oca"
             source.write_bytes(midi(notes_track([(2 * start, 2 * length, pitch) for start, length, pitch in saria])))
@@ -261,6 +390,13 @@ class CommandLine(unittest.TestCase):
         buttons, _, stderr = self.run_converter("--allow-songs")
         self.assertFalse(any(b & m.BTN["DDOWN"] for b in buttons))
         self.assertIn("warning: it plays Saria's Song", stderr)
+
+    def test_game_song_is_found_after_notes_too_close_are_left_out(self):
+        # a 30 ms C5 (on Y) just before the first B4 (on Y) is left out, which leaves Saria's Song note for note
+        buttons, stdout, _ = self.run_converter(extra=[(0.965, 0.03, 72)])
+        self.assertIn("(1 left out, too close together)", stdout)
+        self.assertIn("Saria's Song at notes 1-6", stdout)
+        self.assertEqual(sum(1 for b in buttons if b & m.BTN["DDOWN"]), 1)
 
 
 if __name__ == "__main__":

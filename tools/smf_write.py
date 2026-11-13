@@ -29,9 +29,11 @@ def midi(*tracks):
     return b"MThd" + struct.pack(">IHHH", 6, 1, len(tracks), TICKS_PER_QUARTER) + b"".join(tracks)
 
 
-def notes_track(notes, channel=1, name=None):
-    """notes: (start beat, length in beats, pitch)."""
+def notes_track(notes, channel=1, name=None, program=None):
+    """notes: (start beat, length in beats, pitch); program: a General MIDI program change before them."""
     events = [(0, b"\xFF\x03" + vlq(len(name.encode())) + name.encode())] if name else []
+    if program is not None:
+        events.append((0, bytes([0xC0 | (channel - 1), program])))
     for start, length, pitch in notes:
         events.append((int(start * TICKS_PER_QUARTER), bytes([0x90 | (channel - 1), pitch, VELOCITY])))
         events.append((int((start + length) * TICKS_PER_QUARTER), bytes([0x80 | (channel - 1), pitch, 0])))
