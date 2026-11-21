@@ -26,6 +26,10 @@ bool sys_mapped(uintptr_t addr, size_t size, uint32_t perm);
 uintptr_t sys_region_start(uintptr_t addr);
 uint64_t sys_ms(void); /* milliseconds since the console started */
 
+/* How a step of setting up drawing ended. INIT_NO_MEMORY is worth trying again later (the game's heap may
+ * have room then); INIT_FAILED isn't. */
+typedef enum { INIT_OK, INIT_FAILED, INIT_NO_MEMORY } init_result_t;
+
 /* One line in the log (svcOutputDebugString), prefixed "ocarinaMIDI: ". */
 void log_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 /* Unformatted; safe before the sdk is initialised (module init). */

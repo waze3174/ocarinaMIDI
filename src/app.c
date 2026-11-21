@@ -25,7 +25,7 @@ static void select_song(int step)
   }
   if (!songs_count())
     return;
-  gameui_load(); /* the list is wanted: the game's font and shader, once */
+  gameui_load(); /* a no-op once loaded */
   selected = songs_step(selected, step);
   log_printf("song %d of %d: %s", selected + 1, songs_count(), songs_name(selected));
   songlist_linger();
@@ -55,6 +55,7 @@ static void run(control_t command)
 
 void app_frame(uint32_t held)
 {
+  gameui_load(); /* the first frame reads the game's font and shader; later calls do nothing */
   player_frame();
   bool menu_open = controls_menu_open(held);
   /* The list on screen is the one on the SD card now. Not while a song plays: reading the card on

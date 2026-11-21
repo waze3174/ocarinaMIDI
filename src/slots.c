@@ -4,6 +4,7 @@
 #include "sys.h"
 
 void *aligned_alloc(size_t align, size_t size); /* from main */
+void free(void *p);                             /* from main */
 
 #define CTRL_SIZE        0x4000 /* control memory per slot */
 #define PAGE_SIZE        0x1000
@@ -56,33 +57,36 @@ static bool load_functions(void)
   return true;
 }
 
-bool slots_init(size_t command_bytes)
+init_result_t slots_init(size_t command_bytes)
 {
   command_size = command_bytes;
   if (!load_functions())
-    return false;
+    return INIT_FAILED;
   command_mem = aligned_alloc(PAGE_SIZE, command_size * SLOT_COUNT);
   control_mem = aligned_alloc(PAGE_SIZE, CTRL_SIZE * SLOT_COUNT);
   if (!command_mem || !control_mem) {
     log_printf("out of memory for the drawing's commands");
-    return false;
+    free(command_mem);
+    free(control_mem);
+    command_mem = control_mem = 0;
+    return INIT_NO_MEMORY;
   }
   if (!nvn_make_pool(&command_pool, command_mem, command_size * SLOT_COUNT,
                      NVN_POOL_CPU_UNCACHED | NVN_POOL_GPU_CACHED)) {
     log_printf("no memory pool for the drawing's commands");
-    return false;
+    return INIT_FAILED;
   }
   if (!fn.cmd_init(&cmd_buffer, nvn_device())) {
     log_printf("no command buffer for the drawing");
-    return false;
+    return INIT_FAILED;
   }
   for (int s = 0; s < SLOT_COUNT; s++) {
     if (!fn.sync_init(&slot_sync[s], nvn_device())) {
       log_printf("no fence for the drawing");
-      return false;
+      return INIT_FAILED;
     }
   }
-  return true;
+  return INIT_OK;
 }
 
 int slots_acquire(void)

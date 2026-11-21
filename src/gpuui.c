@@ -168,7 +168,7 @@ static void (*device_integer)(const nvn_device_t *, int, int *);
 
 /* --- objects and memory ------------------------------------------------------------------------------ */
 
-static bool ready;
+static bool ready, programs_made;
 
 static nvn_obj_t code_pool, data_pool;
 static uint8_t *code_mem, *data_mem;
@@ -201,25 +201,25 @@ static size_t off_vertices, off_view, off_shadow, off_material, off_textures, of
 static size_t round_up(size_t n, size_t to) { return (n + to - 1) / to * to; }
 
 /* the shader code areas in a pool of their own, each 256-aligned, with the padding NVN 2 wants after them */
-static bool make_programs(void)
+static init_result_t make_programs(void)
 {
   code_size = 0;
   for (int p = 0; p < UI_PROGRAMS; p++) {
     const uishader_program_t *program = uishader_program(p);
     if (!program)
-      return false;
+      return INIT_FAILED;
     code_size += round_up(program->vertex.code_size, CODE_ALIGN) + round_up(program->fragment.code_size, CODE_ALIGN);
   }
   code_size = round_up(code_size + CODE_PADDING, PAGE);
   code_mem = aligned_alloc(PAGE, code_size);
   if (!code_mem)
-    return false;
+    return INIT_NO_MEMORY;
   /* written once it's a pool (uncached): nothing of it waits in the CPU's cache */
   if (!nvn_make_pool(&code_pool, code_mem, code_size,
                      NVN_POOL_CPU_UNCACHED | NVN_POOL_GPU_CACHED | NVN_POOL_SHADER_CODE)) {
     free(code_mem);
     code_mem = 0;
-    return false;
+    return INIT_FAILED;
   }
   memset(code_mem, 0, code_size);
   size_t at = 0;
@@ -238,9 +238,9 @@ static bool make_programs(void)
     shader_data[p][0].data += code_gpu;
     shader_data[p][1].data += code_gpu;
     if (!g.program_init(&programs[p], nvn_device()) || !g.program_set_shaders(&programs[p], 2, shader_data[p]))
-      return false;
+      return INIT_FAILED;
   }
-  return true;
+  return INIT_OK;
 }
 
 static void make_states(void)
@@ -313,19 +313,19 @@ static void plan_data(size_t atlas_size, size_t atlas_align)
   data_size = round_up(at, PAGE);
 }
 
-static bool make_data(void)
+static init_result_t make_data(void)
 {
   describe_atlas();
   size_t atlas_align = g.tb_storage_align(&atlas_builder);
   plan_data(g.tb_storage_size(&atlas_builder), atlas_align < PAGE ? PAGE : atlas_align);
   data_mem = aligned_alloc(PAGE, data_size);
   if (!data_mem)
-    return false;
+    return INIT_NO_MEMORY;
   /* written once it's a pool (uncached): nothing of it waits in the CPU's cache */
   if (!nvn_make_pool(&data_pool, data_mem, data_size, NVN_POOL_CPU_UNCACHED | NVN_POOL_GPU_CACHED)) {
     free(data_mem);
     data_mem = 0;
-    return false;
+    return INIT_FAILED;
   }
   memset(data_mem, 0, off_elements);
   data_gpu = g.pool_address(&data_pool);
@@ -333,20 +333,20 @@ static bool make_data(void)
 
   g.tb_storage(&atlas_builder, &data_pool, (ptrdiff_t)off_atlas);
   if (!g.texture_init(&atlas, &atlas_builder))
-    return false;
+    return INIT_FAILED;
   g.sb_device(&sampler_builder, nvn_device());
   g.sb_defaults(&sampler_builder);
   g.sb_filter(&sampler_builder, FILTER_LINEAR, FILTER_LINEAR);
   g.sb_wrap(&sampler_builder, WRAP_CLAMP_TO_EDGE, WRAP_CLAMP_TO_EDGE, WRAP_CLAMP_TO_EDGE);
   if (!g.sampler_init(&sampler, &sampler_builder))
-    return false;
+    return INIT_FAILED;
   if (!g.texture_pool_init(&texture_pool, &data_pool, (ptrdiff_t)off_textures, POOL_ENTRIES) ||
       !g.sampler_pool_init(&sampler_pool, &data_pool, (ptrdiff_t)off_samplers, POOL_ENTRIES))
-    return false;
+    return INIT_FAILED;
   g.texture_pool_register(&texture_pool, our_texture_id, &atlas, 0);
   g.sampler_pool_register(&sampler_pool, our_sampler_id, &sampler);
   atlas_handle = g.texture_handle(nvn_device(), our_texture_id, our_sampler_id);
-  return true;
+  return INIT_OK;
 }
 
 static bool load_functions(void)
@@ -363,25 +363,41 @@ static bool load_functions(void)
   return true;
 }
 
-bool gpuui_init(void)
+/* The shader pool is kept once made, so a try again after running out of memory starts at the data. */
+static init_result_t make_programs_once(void)
+{
+  if (programs_made)
+    return INIT_OK;
+  init_result_t result = make_programs();
+  if (result == INIT_OK) {
+    make_states();
+    programs_made = true;
+  } else {
+    log_printf(result == INIT_NO_MEMORY ? "gpu drawing: no memory for the ui shader's code"
+                                        : "gpu drawing: the ui shader's programs didn't build");
+  }
+  return result;
+}
+
+init_result_t gpuui_init(void)
 {
   if (ready)
-    return true;
+    return INIT_OK;
   if (!load_functions())
-    return false;
-  if (!make_programs()) {
-    log_printf("gpu drawing: the ui shader's programs didn't build");
-    return false;
-  }
-  make_states();
-  if (!make_data()) {
-    log_printf("gpu drawing: no memory for its buffers and atlas");
-    return false;
+    return INIT_FAILED;
+  init_result_t result = make_programs_once();
+  if (result != INIT_OK)
+    return result;
+  result = make_data();
+  if (result != INIT_OK) {
+    log_printf(result == INIT_NO_MEMORY ? "gpu drawing: no memory for its buffers and atlas"
+                                        : "gpu drawing: its buffers and atlas didn't start");
+    return result;
   }
   ready = true;
   log_printf("gpu drawing ready (%u KiB, shader code %u KiB)", (unsigned)(data_size / 1024),
              (unsigned)(code_size / 1024));
-  return true;
+  return INIT_OK;
 }
 
 bool gpuui_ready(void)

@@ -64,15 +64,29 @@ void gameui_load(void)
   __atomic_store_n(&load_state, ok ? LOAD_OK : LOAD_FAILED, __ATOMIC_RELEASE);
 }
 
-bool gameui_usable(void)
+bool gameui_settled(void)
+{
+  return __atomic_load_n(&load_state, __ATOMIC_ACQUIRE) != LOAD_NONE;
+}
+
+init_result_t gameui_init(void)
 {
   if (gpu_state == GPU_READY)
-    return true;
+    return INIT_OK;
   if (gpu_state == GPU_FAILED || __atomic_load_n(&load_state, __ATOMIC_ACQUIRE) != LOAD_OK)
-    return false;
-  gpu_state = gpuui_init() ? GPU_READY : GPU_FAILED;
-  if (gpu_state == GPU_FAILED)
+    return INIT_FAILED;
+  init_result_t result = gpuui_init();
+  if (result == INIT_OK) {
+    gpu_state = GPU_READY;
+  } else if (result == INIT_FAILED) {
+    gpu_state = GPU_FAILED;
     log_printf("game-style drawing can't start: the song list uses its plain panel");
+  }
+  return result;
+}
+
+bool gameui_usable(void)
+{
   return gpu_state == GPU_READY;
 }
 

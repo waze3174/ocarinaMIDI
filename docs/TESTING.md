@@ -3,7 +3,7 @@
 0.1.1 passed t1 to t8 in an emulator next to the bundled sloperinaGZ 0.0.4.1 (2026-11-10), and t8 set off
 Saria's Song. The stop lines measured 24.6 to 39 frames a second against songs made for 30, which is
 why 0.2.0 times songs by the clock. In 0.2.0 the clock timing and the plain song list are confirmed in
-game; avoiding the game's songs hasn't been tried yet. 0.3.0 draws the song list in the game's own style,
+game; avoiding the game's songs hasn't been tried yet. 0.3.1 takes the list's memory at boot (see 2). 0.3.0 draws the song list in the game's own style,
 keeps fast songs in time (it skips what it can't give in time instead of falling behind), and its drop bat
 asks which part of a song is the melody and works next to the emulator's exe; none of that is tested in
 game yet. Steps marked **new** cover what changed; the others check nothing regressed.
@@ -30,7 +30,7 @@ Three boots: ocarinaMIDI alone; with sloperinaGZ 0.0.4.1 as released; with slope
 `feature/chain-hooks` branch (aacbf17 or later). Each should log:
 
 ```
-ocarinaMIDI: loaded 0.3.0 (...); controller hooks go in at the game's first controller setup
+ocarinaMIDI: loaded 0.3.1 (...); controller hooks go in at the game's first controller setup
 ocarinaMIDI: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...      (x5, styles 0-4)
 ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 ```
@@ -41,19 +41,24 @@ ocarinaMIDI: counting frames from reads of controller style S, NpadIdType 0x...
 - No `[rtld] Unresolved symbol` line anywhere: that's a hook calling main's PLT (0.1.0's crash, DESIGN.md).
 - No "no song list on screen:" line after "loaded" (main's `nvnBootstrapLoader` import wasn't found).
 
-## 2. The song list (new in 0.3.0: the game's style)
+## 2. The song list (new in 0.3.0: the game's style; 0.3.1: its memory is taken at boot)
 
 With the ocarina out, hold R3. Nothing shows yet: the list only appears when the selection changes. Run this
 once with sloperinaGZ not loaded, once with it loaded and its menu closed, and once with its menu open.
 
-- First R3 + D-pad Right: the game may pause for a moment (it's reading its font and shader), then a box
-  at the top centre in the game's menu look: near-black, the title `song 1 of 8` in gold bold with
-  `stopped` dimmed at the right and a hairline under them, the songs in the game's type, the selected one
-  in bold white on a light band that fades out at both ends, the ones before and after it in the normal
-  colour. The log shows, once, `ui shader: programs ...`, `game fonts: Clarimo UD PE loaded (N KiB, N ms)` and
-  `gpu drawing ready (... KiB, shader code ... KiB)`.
+- **new in 0.3.1** At boot, within the first seconds of play (the game may pause for a moment), the log shows
+  `ui shader: programs ...`, `game fonts: Clarimo UD PE loaded (N KiB, N ms)` and, at the first present
+  after that, `gpu drawing ready (... KiB, shader code ... KiB)`, all before any song is switched. Then
+  play for 40 minutes or more (sloperinaGZ and the in-game tracker loaded too) and switch songs: the list
+  shows as it did at boot, with no `zstd: no memory`, `no memory yet` or `song list off:` line. If the log
+  does say `song list: no memory yet, trying again in 5 s`, the list must come back by itself once the game
+  frees memory, with a later `gpu drawing ready` (or `song list ready` for the plain panel).
+- First R3 + D-pad Right: a box at the top centre in the game's menu look: near-black, the title
+  `song 1 of 8` in gold bold with `stopped` dimmed at the right and a hairline under them, the songs in
+  the game's type, the selected one in bold white on a light band that fades out at both ends, the ones before and after it in the normal
+  colour.
 - R3 + D-pad Right / Left steps through the list (and logs "song 2 of 8: ..."). It wraps at both ends. The
-  list stays 3 s after the last switch, then goes, whether R3 is held or not. Later switches don't pause.
+  list stays 3 s after the last switch, then goes, whether R3 is held or not. No switch pauses.
 - R3 + D-pad Up right after switching: the list goes at once and the song plays without it. Play
   and stop alone never show it.
 - The game's picture is unchanged around the box, there's no flicker, the colours aren't washed out
@@ -69,8 +74,8 @@ once with sloperinaGZ not loaded, once with it loaded and its menu closed, and o
   wrong after it was shown (both modules put the game's texture and sampler pools back).
   Check the log for the order of the two modules' "loaded" lines (DESIGN.md, Next to sloperinaGZ).
 - Memory: with sloperinaGZ loaded too, check that its pictures still load (its log) and that the game hits no
-  allocation error after the first switch. This module takes about 1.5 MiB of the game's heap for the
-  GPU side once it has drawn the list, and the two font files (the log gives their size).
+  allocation error. This module takes about 1.5 MiB of the game's heap for the GPU side after boot, and the
+  two font files (the log gives their size), and keeps them.
 - The plain fallback can't be forced from outside. If `game fonts:`, `ui shader:` or `gpu drawing:` reports
   a problem in the log, check that the plain panel (`song list on screen (plain)`) shows instead.
 - "song list off: unsupported swapchain format": the line before it gives the format; `format_bpp` in

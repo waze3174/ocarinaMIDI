@@ -11,8 +11,11 @@
 #include "sys.h"
 
 #define COMMAND_BYTES 0x20000 /* command memory per slot: far more than a panel's 150 quads need */
+#define RETRY_MS      5000    /* between tries when the game's heap has no room yet */
 
-static enum { OV_NONE, OV_READY, OV_FAILED } state;
+/* what is set up next, in order; the plain panel only if the game's style can't be used */
+static enum { OV_SLOTS, OV_GAMEUI, OV_PLAIN, OV_READY, OV_FAILED } state;
+static uint64_t retry_at_ms;
 
 /* --- the panel, from the game's controller thread to its present thread ------------------------- */
 
@@ -66,18 +69,55 @@ static bool record(nvn_obj_t *cmd, int slot, nvn_texture_t *texture, const nvn_t
   return overlay_cpu_record(cmd, slot, texture, info, area, panel);
 }
 
+static init_result_t prepare_step(const nvn_texture_info_t *info)
+{
+  switch (state) {
+    case OV_SLOTS: return slots_init(COMMAND_BYTES);
+    case OV_GAMEUI: return gameui_init();
+    default: return overlay_cpu_init(info);
+  }
+}
+
+static void prepare_done(init_result_t result)
+{
+  bool ok = result == INIT_OK;
+  switch (state) {
+    case OV_SLOTS:
+      if (ok)
+        state = OV_GAMEUI;
+      else
+        overlay_fail("no commands to draw with");
+      break;
+    case OV_GAMEUI: state = ok ? OV_READY : OV_PLAIN; break;
+    default: state = ok ? OV_READY : OV_FAILED; break; /* overlay_cpu.c said why */
+  }
+}
+
+/* Takes the memory the list needs, one step a present, as soon as the game's files are read (gameui.h)
+ * rather than when the list is first shown: the game's heap fills up as it plays. A step that finds no
+ * room is tried again after RETRY_MS; any other failure is for good. */
+static void prepare(const nvn_texture_info_t *info)
+{
+  if (!gameui_settled() || sys_ms() < retry_at_ms)
+    return;
+  init_result_t result = prepare_step(info);
+  if (result == INIT_NO_MEMORY) {
+    log_printf("song list: no memory yet, trying again in %d s", RETRY_MS / 1000);
+    retry_at_ms = sys_ms() + RETRY_MS;
+    return;
+  }
+  prepare_done(result);
+}
+
 void overlay_before_present(nvn_queue_t *queue, nvn_window_t *window, nvn_texture_t *texture)
 {
   const overlay_panel_t *panel = newest_panel();
   nvn_texture_info_t info;
-  if (!panel->shown || state == OV_FAILED || !nvn_texture_info(texture, &info))
+  if (state == OV_FAILED || (state == OV_READY && !panel->shown) || !nvn_texture_info(texture, &info))
     return;
-  if (state == OV_NONE) {
-    if (!slots_init(COMMAND_BYTES)) {
-      overlay_fail("no commands to draw with");
-      return;
-    }
-    state = OV_READY;
+  if (state != OV_READY) {
+    prepare(&info);
+    return;
   }
   if (!can_draw(&info))
     return;

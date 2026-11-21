@@ -101,7 +101,7 @@ modes where the game teaches a song. The scarecrow's song can't be predicted, so
   and short hitches, the same songs keep about 98% of their notes, 95% of them within about 70 ms. A note
   repeated across a skip would reach the game as one held press, so then the event before it (the
   release, or another note) is given instead. The 250 ms stall rule still pauses the song across a load.
-- **Each frame** (`app.c`): the song moves on (`player.c`), then the buttons held during the frame that
+- **Each frame** (`app.c`): the game's font and shader are read (the first frame only), the song moves on (`player.c`), then the buttons held during the frame that
   ended are checked for the controls (`controls.c`), and the song list's text is handed to the
   overlay. The playlist is read when R3 goes down (not while a song plays) and a song when it starts,
   from the SD card on the game's thread (a few milliseconds).
@@ -137,7 +137,7 @@ drawing. In the order seen in the logs (sloperinaGZ's DT_INIT first) the present
 -> sloperinaGZ -> NVN: the list is drawn first, sloperinaGZ's panels over it.
 
 **The game's style** (`gameui.c`, `gpuui.c`, ported from sloperinaGZ's game style). `gameui_load` reads,
-once and on the game thread, the first time songs are switched: the game's UI shader
+once and on the game thread, at the module's first game frame (`app_frame`): the game's UI shader
 (`content:/Layout2Shader/MergeShader...bfsha.zs`, two of its programs, found by their options as the game's
 own runtime does) and the fonts Clarimo UD PE regular and DemiBold (`content:/Font2/Scalable/...bfotf.zs`),
 through `gamefile.c`: zstd with the game's dictionary (`zstd.c` over zstd's educational decoder), then the
@@ -157,7 +157,19 @@ font into a buffer in the swapchain's format and copied into the texture about t
 `nvnCommandBufferCopyBufferToTexture`, a buffer per slot, rasterised again only when its text changes. It
 is used when the game's style can't be: `gameui_load` failed (a file isn't there, no memory, the shader
 isn't the one this module knows), or the GPU side didn't start. Each says why in the log. Its buffers
-(about 1.6 MiB at 1080p) are only taken when it is first used.
+(about 1.6 MiB at 1080p) are only taken when the game's style can't be used.
+
+**Memory is taken early and kept.** The module borrows its memory from the game's heap (`aligned_alloc` in
+main), and the heap fills up as the game plays, so waiting until the list is first wanted could find none
+(0.3.0, 40 minutes in: "zstd: no memory", then "song list off: out of memory", for the rest of the
+session). `app_frame` loads the font and shader at its first call, and `overlay_before_present` (not only
+when the list is shown) prepares the drawing once `gameui_settled` says the load is over: `slots_init`,
+then `gameui_init` (the GPU side) or, if that isn't available, `overlay_cpu_init` (the plain panel's
+pixels), one step per present. A step reports `INIT_OK`, `INIT_FAILED` (a missing NVN function, an
+unsupported format, a pool the driver refuses: for good) or `INIT_NO_MEMORY`, after which it frees what it
+had taken and is tried again after `RETRY_MS` (5 s), logging each failed try once. The GPU side keeps its
+shader pool across tries, so only the data is asked for again. A failed load of the font or shader (the
+files, or no memory) isn't retried.
 
 ## The converter
 

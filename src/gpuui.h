@@ -12,12 +12,14 @@
 
 #include "gamefont.h"
 #include "nvn.h"
+#include "sys.h"
 
 typedef struct { float r, g, b, a; } gpu_colour_t;
 
-/* render thread, once, after the game has a device and uishader_load and gamefont_load have succeeded:
- * false if the GPU path can't be used */
-bool gpuui_init(void);
+/* render thread, after the game has a device and uishader_load and gamefont_load have succeeded:
+ * INIT_FAILED if the GPU path can't be used; INIT_NO_MEMORY if the game's heap had no room (a later call
+ * tries again, keeping what was made) */
+init_result_t gpuui_init(void);
 bool gpuui_ready(void);
 
 /* One frame: gpuui_begin, quads in drawing order, gpuui_end records them into cmd (between the caller's

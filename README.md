@@ -6,6 +6,16 @@ animation and pitch bend. Songs are converted on the PC first (`tools/midi2oca.p
 
 It runs next to [sloperinaGZ](https://github.com/PracticeROM/sloperina) or on its own.
 
+## What's new in 0.3.1
+
+The song list no longer fails to show in a long session. 0.3.0 borrowed the game's memory for the list's
+font, shader and drawing only when the list was first used, and after 40 minutes of play the game's heap
+could be full by then ("zstd: no memory", "song list off: out of memory"), so the list never came back.
+Now the module reads the game's font and shader at its first frame and sets up its drawing at the first
+present after that, so it takes its memory near the start of the game and keeps it (the plain panel's
+buffers are only taken when the game's style can't be used). If the heap is still short, the list tries
+again every 5 seconds instead of switching itself off for good.
+
 ## What's new in 0.3.0
 
 The song list is drawn in the game's own menu style, as sloperinaGZ's menu is in its "game" style: the
@@ -69,8 +79,8 @@ Take out the ocarina in the game, then:
 When you switch songs (R3 + D-pad Right / Left), the song list shows at the top of the screen for 3 seconds:
 the selected song, its place in the playlist, the songs before and after it, and whether a song is
 playing, with its time. It goes as soon as a song starts, so it never covers a performance. Songs whose
-file is gone are left out. The first time you switch songs, the module reads the game's font and shader,
-which can take a moment.
+file is gone are left out. The module reads the game's font and shader when it starts, which can
+make the game pause for a moment then.
 
 While a song plays, the game only sees the song's input; your controller is back when it ends or you stop
 it. While R3 is held the game doesn't see the D-pad. The module also logs what it does in the emulator's

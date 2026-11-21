@@ -8,12 +8,13 @@
 #include <stddef.h>
 
 #include "nvn.h"
+#include "sys.h"
 
 #define SLOT_COUNT 2
 
-/* Once the game has a device: the command memory (command_bytes per slot), the fences. False, with the
- * reason logged, if something is missing or there's no memory. */
-bool slots_init(size_t command_bytes);
+/* Once the game has a device: the command memory (command_bytes per slot), the fences. Not OK: the reason
+ * is logged; INIT_NO_MEMORY leaves nothing taken, and a later call tries again. */
+init_result_t slots_init(size_t command_bytes);
 /* The slot for this frame, with the GPU done with its last use; -1 if it isn't yet (a frame is then left
  * undrawn rather than held up; slots_stuck says when that has gone on too long). */
 int slots_acquire(void);

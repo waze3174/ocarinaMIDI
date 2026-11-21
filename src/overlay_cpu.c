@@ -154,35 +154,37 @@ static bool load_functions(void)
   return true;
 }
 
-/* Once, at the first present with the panel shown. */
-static void cpu_init(const nvn_texture_info_t *info)
+init_result_t overlay_cpu_init(const nvn_texture_info_t *info)
 {
+  if (state != CPU_NONE)
+    return state == CPU_READY ? INIT_OK : INIT_FAILED;
   if (!load_functions()) {
     cpu_fail("an NVN function is missing");
-    return;
+    return INIT_FAILED;
   }
   swapchain_format = info->format;
   bytes_per_pixel = format_bpp(swapchain_format);
   log_printf("swapchain: %dx%d, format %d", info->width, info->height, swapchain_format);
   if (!bytes_per_pixel) {
     cpu_fail("unsupported swapchain format (see the line above)");
-    return;
+    return INIT_FAILED;
   }
   max_scale = scale_for(info->height); /* the buffers' size: a taller picture later keeps this scale */
   slot_pixel_bytes = round_page((size_t)PANEL_FONT_W * PANEL_FONT_H * max_scale * max_scale * bytes_per_pixel);
   pixel_mem = aligned_alloc(PAGE_SIZE, slot_pixel_bytes * SLOT_COUNT);
   if (!pixel_mem) {
-    cpu_fail("out of memory");
-    return;
+    log_printf("plain panel: out of memory for its pixels");
+    return INIT_NO_MEMORY;
   }
   if (!nvn_make_pool(&pixel_pool, pixel_mem, slot_pixel_bytes * SLOT_COUNT,
                      NVN_POOL_CPU_UNCACHED | NVN_POOL_GPU_UNCACHED)) {
     cpu_fail("memory pool");
-    return;
+    return INIT_FAILED;
   }
   log_printf("song list ready (scale up to %d, %u KiB of pixels)", max_scale,
              (unsigned)(slot_pixel_bytes * SLOT_COUNT / 1024));
   state = CPU_READY;
+  return INIT_OK;
 }
 
 /* --- drawing ---------------------------------------------------------------------------------------- */
@@ -272,8 +274,6 @@ static void rasterise(const rows_t *rows, uint8_t *dst, int scale)
 
 bool overlay_cpu_usable(const nvn_texture_info_t *info)
 {
-  if (state == CPU_NONE)
-    cpu_init(info);
   if (state == CPU_READY && info->format != swapchain_format) {
     cpu_fail("the swapchain's format changed");
   }
